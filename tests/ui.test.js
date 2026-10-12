@@ -15,7 +15,7 @@ try { playwright = require('playwright'); } catch (error) { /* non installé */ 
 
 function pageWithBootstrap(bootstrap) {
   const html = fs.readFileSync(path.join(__dirname, '..', 'Index.html'), 'utf8');
-  const stub = `<script>window.google={script:{run:{_s:null,_f:null,withSuccessHandler(f){this._s=f;return this},withFailureHandler(f){this._f=f;return this},getDashboardBootstrap(){const f=this._s;const data=${JSON.stringify(bootstrap)};setTimeout(()=>f(data),0)}}}};</script>`;
+  const stub = `<script>window.google={script:{run:{_s:null,_f:null,withSuccessHandler(f){this._s=f;return this},withFailureHandler(f){this._f=f;return this},getDashboardBootstrap(){const f=this._s;const data=${JSON.stringify(bootstrap)};setTimeout(()=>f(data),0)},rafraichirArchivesDepuisDashboard(){const f=this._s;const history=${JSON.stringify(bootstrap.history)};setTimeout(()=>f({report:['Archives 09/26 : 3 valeurs (mois 2026-09)','2 lignes au total dans "HISTORIQUE TDB VA".'],history,warnings:[]}),0)}}}};</script>`;
   const file = path.join(os.tmpdir(), `dashboard-rso-test-${process.pid}.html`);
   fs.writeFileSync(file, html.replace('<body class="viz-root">', `<body class="viz-root">${stub}`));
   return file;
@@ -41,6 +41,28 @@ test('interface : territoires de chaque filière dans Synthèse, Détail par pô
     const kpis = await page.$$eval('#referents-kpis dd', (cells) => cells.map((c) => c.firstChild.textContent));
     assert.deepStrictEqual(kpis, ['75 %', '4'], kpis.join(' | '));
     assert.strictEqual(await page.$$eval('#referents-table-body tr', (rows) => rows.length), 4);
+    const head = await page.$$eval('#referents-table-head th', (cells) => cells.map((c) => c.textContent.replace(/ [▲▼]$/, '')));
+    assert.deepStrictEqual(head.slice(0, 4), ['Pôle', 'Filière', 'Territoire', 'Directeur·rice de territoire']);
+    assert.deepStrictEqual(await page.$$eval('#referents-table-body a[href^="mailto:"]', (links) => links.map((l) => l.getAttribute('href'))), ['mailto:mail@croix-rouge.fr']);
+    // Tri par nom du pôle, croissant puis décroissant.
+    const names = () => page.$$eval('#referents-table-body tr td:first-child', (cells) => cells.map((c) => c.textContent));
+    await page.click('#referents-table-head button:has-text("Pôle")');
+    const ascending = await names();
+    assert.deepStrictEqual(ascending, [...ascending].sort((a, b) => a.localeCompare(b, 'fr')));
+    await page.click('#referents-table-head button:has-text("Pôle")');
+    assert.deepStrictEqual(await names(), [...ascending].reverse());
+    // Couverture par filière : une ligne par filière (évolution ou liste).
+    const filieresRows = await page.$$eval('#referents-filieres-body tr', (rows) => rows.map((r) => [...r.cells].map((c) => c.textContent)));
+    assert.deepStrictEqual(filieresRows.map((r) => r[0]), ['CRC', 'PROT ENFANCE']);
+    assert.match(filieresRows[0][1], /100/);
+    assert.match(filieresRows[0][3], /75 %.*3 \/ 4/);
+    assert.strictEqual(filieresRows[1][3], '—');
+
+    // Bouton « Rafraîchir les archives » (vue Évolution).
+    await page.click('#tab-evolution');
+    await page.click('#refresh-archives');
+    await page.waitForFunction(() => /réimportées/.test(document.getElementById('refresh-archives-status').textContent));
+    assert.ok(!(await page.$eval('#refresh-archives', (button) => button.disabled)));
 
     for (const [filiere, territories] of Object.entries(FILIERES)) {
       await page.click('#tab-synthese');

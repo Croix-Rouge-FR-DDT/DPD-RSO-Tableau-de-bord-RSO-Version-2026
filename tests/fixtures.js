@@ -110,9 +110,9 @@ function buildReferents() {
       ['', '', '', '', '']
     ],
     'IMPORT REFERENTS': [
-      ['Réf. territoire', 'Filière', 'Nom pôle / établissement', 'Code Pôle', 'Référent.e 1 \nPrénom et nom', 'Adresse mail (réf. 1)', 'Fonction (réf. 1)', 'Référent.e 2 \nPrénom et nom', 'Adresse mail (réf. 2)', 'Fonction (réf. 2)', 'Référent.e \nOui/Non', 'Date MàJ outil de suivi'],
-      ...crc.map((pole, i) => ['A', 'CRC', pole.nom, pole.code, i % 2 ? '' : `Personne ${i}`, i === 1 ? 'mail@croix-rouge.fr' : '', 'RAF', i === 0 ? 'Second' : '', '', '', 'OUI', new Date(2026, 8, 1)]),
-      ['', 'Filière', '', 'Code Pôle']
+      ['Réf. territoire', 'Région', 'DT (directeur territorial)', 'Filière', 'Nom pôle / établissement', 'Code Pôle', 'Référent.e 1 \nPrénom et nom', 'Adresse mail (réf. 1)', 'Fonction (réf. 1)', 'Référent.e 2 \nPrénom et nom', 'Adresse mail (réf. 2)', 'Fonction (réf. 2)', 'Référent.e \nOui/Non', 'Date MàJ outil de suivi'],
+      ...crc.map((pole, i) => ['A', 'IDF', i < 2 ? 'Directrice A' : 'Directeur B / Appui C', 'CRC', pole.nom, pole.code, i % 2 ? '' : `Personne ${i}`, i === 1 ? 'mail@croix-rouge.fr' : '', 'RAF', i === 0 ? 'Second' : '', '', '', 'OUI', new Date(2026, 8, 1)]),
+      ['', '', '', 'Filière', '', 'Code Pôle']
     ]
   };
 }

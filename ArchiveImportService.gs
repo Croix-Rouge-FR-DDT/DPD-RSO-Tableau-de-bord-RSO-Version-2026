@@ -62,6 +62,11 @@ function importArchivesTableauDeBord() {
 }
 
 function refreshHistory_(force) {
+  return refreshHistoryWithReport_(force).changed;
+}
+
+// {changed, report: [lignes du compte rendu]}
+function refreshHistoryWithReport_(force) {
   const config = getConfig_();
   const source = openSpreadsheet_(config.ARCHIVES_SPREADSHEET_ID || config.SPREADSHEET_ID);
   const names = source.getSheets()
@@ -75,12 +80,40 @@ function refreshHistory_(force) {
   const properties = PropertiesService.getScriptProperties();
   if (!force && properties.getProperty(HISTORY_SIGNATURE_PROPERTY_) === signature) {
     Logger.log('Archives inchangées depuis la dernière actualisation : rien à faire.');
-    return false;
+    return {changed: false, report: ['Archives inchangées depuis la dernière actualisation : rien à faire.']};
   }
-  importArchiveSheets_(source, names, valuesByName, true);
+  const report = importArchiveSheets_(source, names, valuesByName, true);
   properties.setProperty(HISTORY_SIGNATURE_PROPERTY_, signature);
   properties.setProperty(HISTORY_REFRESHED_AT_PROPERTY_, new Date().toISOString());
-  return true;
+  return {changed: true, report: report};
+}
+
+// Bouton « Rafraîchir les archives » de la vue Évolution : même import
+// forcé que importArchivesTableauDeBord, lancé depuis le dashboard (utile
+// tant que le déclencheur horaire n'est pas vérifié). Renvoie le compte
+// rendu et l'historique relu, pour réafficher la vue sans recharger la page.
+// Le verrou évite deux réécritures simultanées de HISTORIQUE TDB VA (deux
+// clics, ou un clic pendant le déclencheur horaire). L'écriture se fait
+// avec les droits du compte indiqué dans « Exécuter en tant que » du
+// déploiement : si c'est « Utilisateur accédant à l'application », seules
+// les personnes ayant le droit de modifier le classeur des archives
+// peuvent rafraîchir.
+function rafraichirArchivesDepuisDashboard() {
+  if (!isAllowedIdentityEmail_(getActiveUserEmail_())) {
+    throw new Error('Accès réservé aux comptes @croix-rouge.fr.');
+  }
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) {
+    throw new Error('Une actualisation est déjà en cours : réessayer dans une minute.');
+  }
+  try {
+    DASHBOARD_DIAGNOSTICS_.warnings = [];
+    DASHBOARD_DIAGNOSTICS_.details = {};
+    const result = refreshHistoryWithReport_(true);
+    return {report: result.report, history: getHistoryForDashboard_(), warnings: DASHBOARD_DIAGNOSTICS_.warnings.slice()};
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function computeSignature_(text) {
@@ -146,7 +179,9 @@ function importArchiveSheets_(source, sheetNames, valuesByName, replaceAll) {
   if (allRows.length) {
     history.getRange(2, 1, allRows.length, HISTORY_HEADERS_.length).setValues(allRows);
   }
-  Logger.log(report.concat([`${allRows.length} lignes au total dans "${config.HISTORY_SHEET_NAME}".`]).join('\n'));
+  report.push(`${allRows.length} lignes au total dans "${config.HISTORY_SHEET_NAME}".`);
+  Logger.log(report.join('\n'));
+  return report;
 }
 
 // À lancer depuis l'éditeur quand un onglet n'est pas reconnu (message

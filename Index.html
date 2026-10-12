@@ -384,6 +384,26 @@
         color: var(--text-muted);
       }
 
+      /* Vue Référents : couverture par filière (barre = dernière
+         photographie de l'onglet « Evolution référents »). */
+      .coverage-bar {
+        display: inline-block;
+        width: 120px;
+        height: 8px;
+        margin-right: 8px;
+        border-radius: 4px;
+        background: var(--surface-2);
+        vertical-align: middle;
+        overflow: hidden;
+      }
+      .coverage-bar span { display: block; height: 100%; background: var(--series-1); }
+      tr.is-selected td { font-weight: 600; }
+      #referents-table th, #referents-table td { text-align: left; }
+
+      .refresh-status { margin: 0 0 20px; font-size: 0.8rem; color: var(--text-secondary); }
+      .refresh-status details { margin-top: 4px; }
+      .refresh-status pre { white-space: pre-wrap; font-size: 0.74rem; margin: 4px 0 0; }
+
       /* ---------------------------------------------------------------
          Vue par poste d'émissions (cartes par action, cf. support
          « Trajectoire décarbonation 2024/2026 » de Simon)
@@ -1031,6 +1051,21 @@
 
       <section class="panel">
         <div class="panel-header">
+          <h2>Couverture par filière — dernière valeur</h2>
+        </div>
+        <div style="overflow-x:auto">
+          <table id="referents-filieres-table">
+            <thead>
+              <tr><th scope="col">Filière</th><th scope="col">Dernière photographie</th><th scope="col">Date</th><th scope="col">Liste « IMPORT REFERENTS »</th></tr>
+            </thead>
+            <tbody id="referents-filieres-body"></tbody>
+          </table>
+        </div>
+        <p class="chart-note">Dernière photographie : dernière valeur de l'onglet « Evolution référents » pour la filière (filière entière, tous territoires). Liste : pôles ayant au moins un·e référent·e ÷ pôles de la filière dans l'onglet « IMPORT REFERENTS », recalculé à chaque chargement ; « — » si la filière n'y figure pas. Les deux peuvent différer si la photographie date d'avant la dernière mise à jour de la liste.</p>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
           <h2 id="referents-list-title">Référent·es par pôle</h2>
         </div>
         <div style="overflow-x:auto">
@@ -1039,6 +1074,7 @@
             <tbody id="referents-table-body"></tbody>
           </table>
         </div>
+        <p class="chart-note">Cliquer sur un nom pour écrire au ou à la référent·e (ouvre la messagerie). Cliquer sur l'en-tête Pôle, Filière ou Territoire pour trier. Directeur·rice de territoire : colonne « DT (directeur territorial) » de l'onglet « IMPORT REFERENTS ».</p>
         <p class="matrix-empty" id="referents-empty" hidden>Aucun pôle de la liste dans ce périmètre.</p>
       </section>
     </section>
@@ -1158,6 +1194,7 @@
         <div class="panel-header">
           <h2>Filtres</h2>
           <div class="actions">
+            <button type="button" id="refresh-archives" title="Relit tous les onglets « Archives… » et réécrit HISTORIQUE TDB VA (jusqu'à une minute)">Rafraîchir les archives</button>
             <button type="button" id="export-evolution-csv">Exporter la vue (CSV)</button>
           </div>
         </div>
@@ -1174,6 +1211,7 @@
             </select>
           </div>
         </div>
+        <div class="refresh-status" id="refresh-archives-status" role="status" hidden></div>
         <p class="filter-hint">Taux de terminés = pôles ayant terminé l'action ÷ pôles concernés, tel que calculé dans le Tableau de bord VA. Avant 11/2025, les archives ne donnent ce taux que pour l'ensemble (pas par filière).</p>
         <p class="filter-hint">Valeur inconnue = point absent, jamais 0. Sont considérés comme inconnus : une campagne avant son année (ex. socles 2026 en 11/2025) ; une filière sans aucun répondant ce mois-là ; un 0 terminé alors que toutes les structures de la filière sont comptées « concernées » sans que toutes aient répondu (valeurs par défaut, ex. Petite enfance en 09/2026 après le changement d'outil) ; les indicateurs DIP (flotte, véhicules électriques).</p>
         <p class="matrix-empty" id="evolution-empty" hidden>Aucun historique disponible : lancer importArchivesTableauDeBord() depuis l'éditeur Apps Script (cf. README).</p>
@@ -1311,6 +1349,9 @@
         referentsTableHead: document.getElementById('referents-table-head'),
         referentsTableBody: document.getElementById('referents-table-body'),
         referentsEmpty: document.getElementById('referents-empty'),
+        referentsFilieresBody: document.getElementById('referents-filieres-body'),
+        refreshArchives: document.getElementById('refresh-archives'),
+        refreshArchivesStatus: document.getElementById('refresh-archives-status'),
         tabPoste: document.getElementById('tab-poste'),
         tabEvolution: document.getElementById('tab-evolution'),
         panelSynthese: document.getElementById('panel-synthese'),
@@ -3927,7 +3968,7 @@
         const byCode = new Map(state.bootstrap.poles.map((pole) => [normalizePoleCode(pole.poleCode), pole]));
         state.referentPoles = referentsData().poles.map((pole) => {
           const reference = byCode.get(normalizePoleCode(pole.poleCode));
-          return Object.assign({}, pole, {territoire: reference ? reference.territoire : ''});
+          return Object.assign({directeur: ''}, pole, {territoire: reference ? reference.territoire : '', knownCode: Boolean(reference)});
         });
         return state.referentPoles;
       }
@@ -3952,6 +3993,106 @@
         if ([...elements.referentsTerritoire.options].some((option) => option.value === current)) elements.referentsTerritoire.value = current;
       }
 
+      // Tri du tableau des référent·es (en-têtes Pôle, Filière, Territoire).
+      // Par défaut : territoire puis nom du pôle ; les autres colonnes
+      // départagent toujours par nom du pôle.
+      const REFERENTS_SORT_KEYS = {
+        poleName: (pole) => pole.poleName || pole.poleCode,
+        filiere: (pole) => pole.filiere,
+        territoire: (pole) => pole.territoire
+      };
+      const referentsSortState = {column: 'territoire', direction: 'asc'};
+
+      function sortReferentPoles(poles) {
+        const key = REFERENTS_SORT_KEYS[referentsSortState.column];
+        const factor = referentsSortState.direction === 'asc' ? 1 : -1;
+        const byName = REFERENTS_SORT_KEYS.poleName;
+        return [...poles].sort((left, right) => {
+          // Valeurs vides (ex. territoire inconnu) toujours en fin de liste.
+          const a = key(left) || '';
+          const b = key(right) || '';
+          if (!a !== !b) return a ? -1 : 1;
+          return a.localeCompare(b, 'fr') * factor || byName(left).localeCompare(byName(right), 'fr');
+        });
+      }
+
+      // Taux de couverture de chaque filière : dernière photographie de
+      // l'onglet d'évolution et, si la filière figure dans la liste, taux
+      // recalculé sur la liste (filière entière).
+      function renderReferentsFilieres(selectedFiliere) {
+        const evolution = new Map(referentsData().evolution.map((item) => {
+          const last = item.points.slice().sort((left, right) => left[0].localeCompare(right[0])).pop();
+          return [item.filiere, last];
+        }));
+        const fromList = new Map();
+        referentPoles().forEach((pole) => {
+          const entry = fromList.get(pole.filiere) || {poles: 0, covered: 0};
+          entry.poles += 1;
+          if (pole.referents.length > 0) entry.covered += 1;
+          fromList.set(pole.filiere, entry);
+        });
+        const filieres = distinctSorted([...evolution.keys(), ...fromList.keys()]);
+        const rate = (filiere) => {
+          const last = evolution.get(filiere);
+          if (last) return last[1];
+          const entry = fromList.get(filiere);
+          return entry && entry.poles ? entry.covered / entry.poles : -1;
+        };
+        elements.referentsFilieresBody.replaceChildren(...filieres
+          .sort((left, right) => rate(right) - rate(left) || left.localeCompare(right, 'fr'))
+          .map((filiere) => {
+            const row = document.createElement('tr');
+            if (filiere === selectedFiliere) row.classList.add('is-selected');
+            const cell = (content) => {
+              const td = document.createElement('td');
+              if (typeof content === 'string') td.textContent = content; else td.append(...content);
+              return td;
+            };
+            const last = evolution.get(filiere);
+            const entry = fromList.get(filiere);
+            let photo = '—';
+            if (last) {
+              const bar = document.createElement('span');
+              bar.className = 'coverage-bar';
+              const fill = document.createElement('span');
+              fill.style.width = `${Math.max(0, Math.min(1, last[1])) * 100}%`;
+              bar.append(fill);
+              photo = [bar, formatRate(roundRate(last[1], 1))];
+            }
+            row.append(
+              cell(filiere),
+              cell(photo),
+              cell(last ? new Date(`${last[0]}T00:00:00`).toLocaleDateString('fr-FR') : '—'),
+              cell(entry ? `${formatRate(roundRate(entry.covered, entry.poles))} (${formatCount(entry.covered)} / ${formatCount(entry.poles)} pôles)` : '—')
+            );
+            return row;
+          }));
+      }
+
+      function referentCell(referent) {
+        const td = document.createElement('td');
+        if (!referent) {
+          td.textContent = '—';
+          return td;
+        }
+        const label = referent.name || referent.email;
+        if (referent.email && /^[^@\s]+@[^@\s]+$/.test(referent.email)) {
+          const link = document.createElement('a');
+          link.href = `mailto:${encodeURIComponent(referent.email).replace(/%40/g, '@')}`;
+          link.textContent = label;
+          link.title = `Écrire à ${referent.email}`;
+          td.append(link);
+        } else {
+          td.textContent = label;
+        }
+        if (referent.fonction) {
+          const small = document.createElement('small');
+          small.textContent = ` (${referent.fonction})`;
+          td.append(small);
+        }
+        return td;
+      }
+
       function renderReferents() {
         if (!state.bootstrap) return;
         const filiere = elements.referentsFiliere.value;
@@ -3964,9 +4105,8 @@
           ? `Liste des référent·es disponible pour : ${listFilieres.join(', ')} (onglet « IMPORT REFERENTS »). Les autres filières n'apparaissent que dans le graphique d'évolution.`
           : 'Liste des référent·es indisponible (voir les points à vérifier en tête de page).';
 
-        const poles = referentPoles()
-          .filter((pole) => (!filiere || pole.filiere === filiere) && (!territoire || pole.territoire === territoire))
-          .sort((left, right) => left.territoire.localeCompare(right.territoire, 'fr') || left.poleName.localeCompare(right.poleName, 'fr'));
+        const poles = sortReferentPoles(referentPoles()
+          .filter((pole) => (!filiere || pole.filiere === filiere) && (!territoire || pole.territoire === territoire)));
         const covered = poles.filter((pole) => pole.referents.length > 0).length;
         const referentCount = poles.reduce((sum, pole) => sum + pole.referents.length, 0);
         elements.referentsKpiTitle.textContent = `Couverture — ${scopeLabel}`;
@@ -3982,16 +4122,45 @@
           return {label: item.filiere, points};
         });
         renderLineChart(elements.referentsChart, elements.referentsLegend, series, {emphasis: filiere, tooltipSuffix: 'taux de couverture'});
+        renderReferentsFilieres(filiere);
 
         // Liste.
         const maxReferents = Math.max(1, ...poles.map((pole) => pole.referents.length));
         elements.referentsListTitle.textContent = `Référent·es par pôle — ${scopeLabel} (${formatCount(poles.length)} pôle(s))`;
         elements.referentsTableHead.replaceChildren();
         const headRow = document.createElement('tr');
-        ['Pôle', 'Filière', 'Territoire', ...Array.from({length: maxReferents}, (_, index) => `Référent·e ${index + 1}`), 'MàJ outil de suivi'].forEach((label) => {
+        const headers = [
+          {key: 'poleName', label: 'Pôle'},
+          {key: 'filiere', label: 'Filière'},
+          {key: 'territoire', label: 'Territoire'},
+          {label: 'Directeur·rice de territoire'},
+          ...Array.from({length: maxReferents}, (_, index) => ({label: `Référent·e ${index + 1}`})),
+          {label: 'MàJ outil de suivi'}
+        ];
+        headers.forEach((column) => {
           const th = document.createElement('th');
           th.scope = 'col';
-          th.textContent = label;
+          if (!column.key) {
+            th.textContent = column.label;
+            headRow.append(th);
+            return;
+          }
+          const isActive = referentsSortState.column === column.key;
+          th.setAttribute('aria-sort', isActive ? (referentsSortState.direction === 'asc' ? 'ascending' : 'descending') : 'none');
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'sort-button';
+          button.textContent = column.label + (isActive ? (referentsSortState.direction === 'asc' ? ' ▲' : ' ▼') : '');
+          button.addEventListener('click', () => {
+            if (referentsSortState.column === column.key) {
+              referentsSortState.direction = referentsSortState.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+              referentsSortState.column = column.key;
+              referentsSortState.direction = 'asc';
+            }
+            renderReferents();
+          });
+          th.append(button);
           headRow.append(th);
         });
         elements.referentsTableHead.append(headRow);
@@ -4004,22 +4173,11 @@
           };
           const name = cell(pole.poleName || pole.poleCode);
           name.title = pole.poleCode;
-          row.append(name, cell(pole.filiere), cell(pole.territoire || '—'));
+          const territoireCell = cell(pole.territoire || '—');
+          if (!pole.knownCode) territoireCell.title = `Code pôle ${pole.poleCode} absent de BDD NOMS (filière ${pole.filiere})`;
+          row.append(name, cell(pole.filiere), territoireCell, cell(pole.directeur || '—'));
           for (let index = 0; index < maxReferents; index += 1) {
-            const referent = pole.referents[index];
-            const td = document.createElement('td');
-            if (referent) {
-              td.textContent = referent.name || referent.email;
-              if (referent.fonction) {
-                const small = document.createElement('small');
-                small.textContent = ` (${referent.fonction})`;
-                td.append(small);
-              }
-              if (referent.email) td.title = referent.email;
-            } else {
-              td.textContent = '—';
-            }
-            row.append(td);
+            row.append(referentCell(pole.referents[index]));
           }
           row.append(cell(pole.dateMaj || '—'));
           return row;
@@ -4032,6 +4190,42 @@
         renderReferents();
       });
       elements.referentsTerritoire.addEventListener('change', renderReferents);
+
+      // Bouton « Rafraîchir les archives » (vue Évolution) : import forcé
+      // côté serveur (rafraichirArchivesDepuisDashboard, cf.
+      // ArchiveImportService.gs), puis réaffichage avec l'historique relu.
+      elements.refreshArchives.addEventListener('click', () => {
+        const status = elements.refreshArchivesStatus;
+        elements.refreshArchives.disabled = true;
+        status.hidden = false;
+        status.classList.remove('error');
+        status.textContent = 'Actualisation en cours : lecture de tous les onglets « Archives… » (jusqu\'à une minute)…';
+        google.script.run
+          .withSuccessHandler((result) => {
+            elements.refreshArchives.disabled = false;
+            state.bootstrap.history = result.history;
+            state.historyRowsClean = null;
+            populateEvolutionFilters();
+            renderEvolution();
+            const report = result.report || [];
+            const total = report.find((line) => /lignes au total/.test(line));
+            const alerts = report.filter((line) => /ATTENTION|introuvable|mois \?\)/.test(line)).concat(result.warnings || []);
+            status.textContent = `Archives réimportées${total ? ` : ${total}` : '.'}${alerts.length ? ` ${alerts.length} point(s) à vérifier dans le compte rendu.` : ''}`;
+            const details = document.createElement('details');
+            const summary = document.createElement('summary');
+            summary.textContent = 'Compte rendu par onglet';
+            const pre = document.createElement('pre');
+            pre.textContent = report.concat(result.warnings || []).join('\n');
+            details.append(summary, pre);
+            status.append(details);
+          })
+          .withFailureHandler((error) => {
+            elements.refreshArchives.disabled = false;
+            status.classList.add('error');
+            status.textContent = `Échec de l'actualisation : ${error && error.message ? error.message : 'erreur inconnue'}. Si le message parle d'autorisation, le compte qui exécute l'application doit pouvoir modifier le classeur des archives.`;
+          })
+          .rafraichirArchivesDepuisDashboard();
+      });
 
       // Un seul bouton pour les 3 exports CSV déjà disponibles séparément
       // (Synthèse, Détail, Contrôle), sur ce qui est actuellement affiché

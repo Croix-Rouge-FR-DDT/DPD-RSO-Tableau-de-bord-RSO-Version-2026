@@ -35,7 +35,7 @@ function lancerTests() {
     'ActionReferenceService.gs': ['getActionCatalogue_'],
     'ToolLinksService.gs': ['getToolLinks_'],
     'HistoryService.gs': ['getHistoryForDashboard_', 'historyMonthKey_'],
-    'ArchiveImportService.gs': ['importArchivesTableauDeBord', 'actualiserHistoriqueSiModifie', 'parseArchiveValues_', 'archiveMonthFromName_'],
+    'ArchiveImportService.gs': ['importArchivesTableauDeBord', 'actualiserHistoriqueSiModifie', 'rafraichirArchivesDepuisDashboard', 'parseArchiveValues_', 'archiveMonthFromName_'],
     'ProtEnfanceService.gs': ['getProtEnfanceFacts_', 'parseProtEnfanceValues_'],
     'ReferentsService.gs': ['getReferentsForDashboard_', 'parseReferentsList_']
   };
@@ -96,6 +96,11 @@ function lancerTests() {
     const badMonths = bootstrap.history.rows.filter((row) => !/^\d{4}-\d{2}$/.test(row[0]));
     check('Historique : mois au format AAAA-MM', bootstrap.history.rows.length > 0 && badMonths.length === 0,
       `${bootstrap.history.rows.length} valeurs${badMonths.length ? `, ${badMonths.length} mois mal formés` : ''}`);
+
+    const referentPoles = bootstrap.referents.poles;
+    const withDirector = referentPoles.filter((pole) => pole.directeur).length;
+    check('Référents : directeur·rice de territoire lu·e', referentPoles.length > 0 && withDirector > 0,
+      `${withDirector} pôle(s) sur ${referentPoles.length}`);
   });
 
   const failures = results.filter((result) => !result.ok);

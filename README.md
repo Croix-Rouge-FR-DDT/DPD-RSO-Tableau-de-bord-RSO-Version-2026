@@ -103,7 +103,8 @@ redécouvrir un par un.
    quel.
 8. Archive mensuelle : copier le tableau dans un nouvel onglet
    « Archives MM/AA » du classeur `Archives REPORTING NATIONAL` ; l'historique
-   se met à jour dans l'heure (déclencheur horaire).
+   se met à jour dans l'heure (déclencheur horaire), ou tout de suite avec
+   le bouton « Rafraîchir les archives » de la vue Évolution.
 9. La nouvelle année apparaît seule dans la trajectoire ; l'objectif 2030 se
    règle dans `TRAJECTOIRE_REFERENCE` (`Index.html`).
 10. Ensuite : recharger le dashboard, lire l'encadré « points à vérifier »,
@@ -195,8 +196,20 @@ Classeur « Synthèse référents Environnement » (`REFERENTS_SPREADSHEET_ID`,
   pôles de la liste ayant un·e référent·e 1 ÷ pôles de la liste ; nombre de
   référent·es 1, 2 et 3 (un·e référent·e compte dès que son nom **ou** son
   adresse mail est renseigné : pour PADOM, le nom est souvent vide) ;
+- **couverture par filière — dernière valeur** (12/10/2026) : une ligne par
+  filière, avec la dernière photographie de `Evolution référents` (filière
+  entière) et, si la filière figure dans `IMPORT REFERENTS`, le taux
+  recalculé sur la liste ; triée par taux décroissant, filière choisie en
+  gras ;
 - **liste** des référent·es par pôle (onglet `IMPORT REFERENTS`), territoire
-  repris de `BDD NOMS` via le code pôle.
+  repris de `BDD NOMS` via le code pôle ; colonne « Directeur·rice de
+  territoire » (colonne `DT (directeur territorial)`, texte affiché tel
+  quel) ; nom du ou de la référent·e cliquable (`mailto:`) quand l'adresse
+  est renseignée ; tri par pôle, filière ou territoire en cliquant sur
+  l'en-tête (par défaut : territoire puis pôle).
+- code pôle absent de `BDD NOMS` : l'avertissement en tête de page les
+  regroupe par filière (« PA : code1, code2 ; FLEX : … ») ; dans la liste,
+  le territoire est « — » (survol : code et filière).
 
 Constats sur la copie du 08/10/2026 : la liste ne couvre que FLEX, PA et
 DOM ; il n'y a pas de colonne « Référent.e 3 » (elle sera lue si elle est
@@ -470,7 +483,16 @@ Filière (nom du dashboard), Indicateur, Valeur, Importé le.
   déclencheur → fonction `actualiserHistoriqueSiModifie`, source
   « Déclenché par le temps », « Minuteur horaire », « Toutes les heures ».
   Ensuite plus aucune intervention ; `importArchivesTableauDeBord()` reste
-  disponible pour forcer une actualisation. La vue Évolution affiche la
+  disponible pour forcer une actualisation.
+- **Bouton « Rafraîchir les archives »** (12/10/2026, vue Évolution) : même
+  import forcé, lancé depuis le dashboard (`rafraichirArchivesDepuisDashboard`,
+  réservé au domaine, verrou `LockService` contre deux actualisations
+  simultanées). Affiche le compte rendu par onglet et réaffiche la vue sans
+  recharger la page. L'écriture dans `HISTORIQUE TDB VA` se fait avec le
+  compte choisi dans « Exécuter en tant que » du déploiement : si c'est
+  « Utilisateur accédant à l'application », seules les personnes pouvant
+  modifier le classeur des archives peuvent rafraîchir (sinon message
+  d'erreur dans la vue). La vue Évolution affiche la
   date de la dernière actualisation. (Empreinte plutôt que date de
   modification du fichier : la date n'est lisible que via DriveApp, qui
   imposerait une autorisation Google Drive à tous les utilisateurs.)

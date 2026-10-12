@@ -155,4 +155,37 @@ test('référents : évolution par filière et liste par pôle', () => {
   assert.strictEqual(poles.length, 4);
   assert.strictEqual(poles.filter((pole) => pole.referents.length > 0).length, 3, 'nom OU adresse mail');
   assert.strictEqual(poles.reduce((sum, pole) => sum + pole.referents.length, 0), 4);
+  assert.deepStrictEqual([...poles.map((pole) => pole.directeur)], ['Directrice A', 'Directrice A', 'Directeur B / Appui C', 'Directeur B / Appui C']);
+  assert.ok(poles.some((pole) => pole.referents.some((ref) => ref.email === 'mail@croix-rouge.fr')));
+
+  // Code pôle absent de BDD NOMS : l'avertissement nomme la filière.
+  const app = loadAppsScript({[REFERENTS_ID]: buildReferents()});
+  const missing = poles[0].poleCode;
+  const reference = {};
+  poles.slice(1).forEach((pole) => { reference[app.normalizeText_(pole.poleCode)] = {}; });
+  const warnings = [];
+  app.console.warn = (message) => warnings.push(message);
+  app.getReferentsForDashboard_(reference);
+  assert.ok(warnings.some((w) => w.includes(`CRC : ${missing}`)), warnings.join(' | '));
+});
+
+test('bouton « Rafraîchir les archives » : import forcé, compte rendu et historique relu', () => {
+  const archives = buildArchives();
+  archives['Archives 09/26'] = [
+    ['', '', '', '', 'TOTAL', 'SANITAIRE'],
+    ['', '', 'TX DE TERMINES PARMIS LES CONCERNES', '', '', 'SANITAIRE'],
+    ['', '', '', '', 'TOTAL', '%', '# terminés', '# réponses concernés'],
+    ['', 'Actions socles 2024', 'Repas végétariens', '', 0.5, 0.6, 6, 10],
+    ['', '', '', '', '', '', '', '']
+  ];
+  const app = loadAppsScript({[NATIONAL_ID]: buildNational('normal'), [ARCHIVES_ID]: archives});
+  const first = app.rafraichirArchivesDepuisDashboard();
+  assert.ok(first.report.some((line) => /Archives 09\/26 : \d+ valeurs/.test(line)), first.report.join(' | '));
+  assert.ok(first.history.refreshedAt);
+  assert.ok(first.history.rows.some((row) => row[2] === 'Repas végétariens' && row[3] === 'SAN' && row[5] === 6));
+  // Forcé : réimporte même si les archives n'ont pas changé.
+  assert.ok(app.rafraichirArchivesDepuisDashboard().report.some((line) => /lignes au total/.test(line)));
+
+  const outsider = loadAppsScript({[NATIONAL_ID]: buildNational('normal'), [ARCHIVES_ID]: archives}, {email: 'x@gmail.com'});
+  assert.throws(() => outsider.rafraichirArchivesDepuisDashboard(), /réservé/);
 });

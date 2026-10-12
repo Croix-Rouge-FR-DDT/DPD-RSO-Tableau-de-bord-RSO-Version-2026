@@ -107,6 +107,7 @@ function loadAppsScript(spreadsheets, options = {}) {
       const properties = {getProperty: (key) => (key in store ? store[key] : null), setProperty: (key, value) => { store[key] = String(value); return properties; }};
       return {getScriptProperties: () => properties};
     })(),
+    LockService: {getScriptLock: () => ({tryLock: () => true, releaseLock() {}})},
     HtmlService: {}
   };
   if (options.sheetsApi) context.Sheets = options.sheetsApi;
