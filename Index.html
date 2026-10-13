@@ -464,6 +464,7 @@
         font-size: 0.95rem;
         font-weight: 600;
       }
+      .tile-tools { display: inline-flex; gap: 4px; flex: 0 0 auto; }
       .tile-image-export {
         min-height: auto;
         padding: 2px 8px;
@@ -1215,8 +1216,8 @@
           <div class="filter-field">
             <label for="poste-reduction-mode">Indicateur</label>
             <select id="poste-reduction-mode">
+              <option value="termines" selected>Pôles ayant terminé seulement</option>
               <option value="avancement">Selon l'avancement déclaré</option>
-              <option value="termines">Pôles ayant terminé seulement</option>
             </select>
           </div>
         </div>
@@ -1243,7 +1244,11 @@
         <section class="panel" id="poste-panel">
           <div class="panel-header">
             <h2 id="poste-title">Avancement par poste d'émissions</h2>
-            <button type="button" class="image-export" data-image-target="poste-panel">⤓ Image (PNG)</button>
+            <div class="actions">
+              <button type="button" id="poste-copy">Copier le tableau</button>
+              <button type="button" id="poste-csv">Tableau des tuiles (CSV)</button>
+              <button type="button" class="image-export" data-image-target="poste-panel">⤓ Image (PNG)</button>
+            </div>
           </div>
           <p class="co2-summary" id="poste-co2-summary"></p>
           <div class="poste-grid" id="poste-grid"></div>
@@ -1389,9 +1394,11 @@
         // = aucun filtre). "Actions socle" cochée par défaut (demande de
         // Simon, 29/09/2026).
         actionTypes: 'socle',
-        // Calcul de la réduction "à date" de la vue Par poste (cf.
-        // aggregateReductionByPole) : 'avancement' ou 'termines'.
-        reductionMode: 'avancement',
+        // Indicateur de la vue Par poste (filtre « Indicateur ») : taux
+        // affiché dans les tuiles et calcul de la réduction « à date » (cf.
+        // aggregateReductionByPole) — 'termines' (par défaut, demande du
+        // 13/10/2026, même logique que Simon) ou 'avancement'.
+        reductionMode: 'termines',
         // Pôles pilotes (valeurs en kg) : toujours recalculés avec le
         // catalogue ('catalogue'), décision de Simon du 02/10/2026 ; la
         // valeur 'exclus' reste gérée par aggregateReductionByPole.
@@ -1508,6 +1515,8 @@
         evolutionMultiples: document.getElementById('evolution-multiples'),
         exportEvolutionCsv: document.getElementById('export-evolution-csv'),
         posteReductionMode: document.getElementById('poste-reduction-mode'),
+        posteCsv: document.getElementById('poste-csv'),
+        posteCopy: document.getElementById('poste-copy'),
         posteCo2Summary: document.getElementById('poste-co2-summary'),
         syntheseToolLinks: document.getElementById('synthese-tool-links'),
         detailToolLinks: document.getElementById('detail-tool-links'),
@@ -3154,13 +3163,14 @@
         });
 
         const byName = (left, right) => left.localeCompare(right, 'fr');
-        // Actions triées par avancement décroissant (les données non
-        // disponibles en dernier), puis par nom.
-        const byRate = (left, right) => {
-          const leftRate = left.concernes ? left.somme / left.concernes : -1;
-          const rightRate = right.concernes ? right.somme / right.concernes : -1;
-          return rightRate - leftRate || byName(left.action, right.action);
+        // Actions triées par l'indicateur choisi décroissant (terminées /
+        // concernées ou avancement moyen ; données non disponibles en
+        // dernier), puis par nom.
+        const rateOf = (bucket) => {
+          if (!bucket.concernes) return -1;
+          return (state.reductionMode === 'termines' ? bucket.terminees : bucket.somme) / bucket.concernes;
         };
+        const byRate = (left, right) => rateOf(right) - rateOf(left) || byName(left.action, right.action);
         return [...byPoste.keys()]
           .sort((left, right) => posteRank(left) - posteRank(right) || byName(left, right))
           .map((poste) => ({
@@ -3174,6 +3184,7 @@
               // null = aucun pôle concerné (toutes lignes abandonnées) :
               // affiché comme donnée non disponible, jamais comme 0 %.
               tauxMoyenAvancement: bucket.concernes ? roundRate(bucket.somme, bucket.concernes) : null,
+              tauxTerminees: bucket.concernes ? roundRate(bucket.terminees, bucket.concernes) : null,
               co2: aggregateReductionByPole(bucket.facts)
             })),
           co2: aggregateReductionByPole([...byPoste.get(poste).values()].flatMap((bucket) => bucket.facts))
@@ -3339,7 +3350,9 @@
         const rate = document.createElement('td');
         const rateBox = document.createElement('div');
         rateBox.className = 'poste-rate';
-        rateBox.append(card.tauxMoyenAvancement === null ? '—' : formatRate(card.tauxMoyenAvancement), buildGauge(card.tauxMoyenAvancement));
+        // Taux de la tuile selon le filtre « Indicateur » (cf. posteRateOf).
+        const shownRate = posteRateOf(card);
+        rateBox.append(shownRate === null ? '—' : formatRate(shownRate), buildGauge(shownRate));
         rate.append(rateBox);
 
         const done = document.createElement('td');
@@ -3360,12 +3373,22 @@
         return row;
       }
 
+      // Taux affiché dans les tuiles : terminées / concernées (« pôles ayant
+      // terminé seulement ») ou moyenne d'avancement (« selon l'avancement
+      // déclaré »), comme la réduction « à date » de la même ligne.
+      function posteRateOf(card) {
+        return state.reductionMode === 'termines' ? card.tauxTerminees : card.tauxMoyenAvancement;
+      }
+      function posteRateLabel() {
+        return state.reductionMode === 'termines' ? 'Terminées / concernées' : 'Avancement moyen';
+      }
+
       function buildPosteTable(cards) {
         const table = document.createElement('table');
         table.className = 'poste-table';
         const head = document.createElement('thead');
         const headRow = document.createElement('tr');
-        [['Action', ''], ['📈 Avancement', 'num'], ['À 100 %', 'num'], ['⬇ À date / cible (%)', 'num']].forEach(([label, className]) => {
+        [['Action', ''], [`📈 ${posteRateLabel()}`, 'num'], ['À 100 %', 'num'], ['⬇ À date / cible (%)', 'num']].forEach(([label, className]) => {
           const th = document.createElement('th');
           th.scope = 'col';
           th.textContent = label;
@@ -3598,6 +3621,71 @@
         });
       }
 
+      // Données des tuiles en tableau (demande du 13/10/2026) : une ligne
+      // par action, plus une ligne « Total du poste » ; les deux taux sont
+      // fournis, l'indicateur choisi est rappelé en colonne. Réductions en
+      // points de % du bilan carbone, moyenne par pôle (cf.
+      // aggregateReductionByPole).
+      const POSTE_EXPORT_HEADERS = ['Périmètre', 'Indicateur', 'Poste d\'émissions', 'Action', '% Terminées / concernées', '% Avancement moyen',
+        'Pôles ayant terminé', 'Pôles concernés', 'Réduction à date (pts de %)', 'Réduction cible (pts de %)', 'Pôles comptés (réduction)'];
+
+      function posteExportRows(groups) {
+        const scope = state.posteExport ? state.posteExport.scope : '';
+        const indicator = elements.posteReductionMode.selectedOptions[0].textContent;
+        const reduction = (co2, key) => (co2.poleCount && co2[key] !== null ? Math.round(co2[key] * 100) / 100 : null);
+        return groups.flatMap((group) => group.cards.map((card) => [scope, indicator, group.poste, card.action, card.tauxTerminees, card.tauxMoyenAvancement,
+          card.terminees, card.concernes, reduction(card.co2, 'aDate'), reduction(card.co2, 'cible'), card.co2.poleCount])
+          .concat([[scope, indicator, group.poste, 'Total du poste', null, null, null, null, reduction(group.co2, 'aDate'), reduction(group.co2, 'cible'), group.co2.poleCount]]));
+      }
+
+      function downloadPosteCsv(groups, label) {
+        const escapeCsv = (value) => `"${String(value === null || value === undefined ? '' : value).replace(/"/g, '""')}"`;
+        const csv = [POSTE_EXPORT_HEADERS, ...posteExportRows(groups)].map((row) => row.map(escapeCsv).join(',')).join('\r\n');
+        downloadBlob(new Blob([`\ufeff${csv}`], {type: 'text/csv;charset=utf-8'}), `dashboard-rso-${imageFileName(label).replace(/^dashboard-rso-|-\d{4}-\d{2}-\d{2}\.png$/g, '')}-${dateStamp()}.csv`);
+      }
+
+      // Copie un vrai tableau (HTML + texte tabulé) : collé dans Google
+      // Slides ou Docs, il devient un tableau modifiable ; dans Sheets, des
+      // cellules. Copie par sélection (execCommand) : l'API presse-papiers
+      // asynchrone peut être bloquée dans le cadre d'Apps Script.
+      function copyPosteTable(groups, button) {
+        const formatValue = (value, index) => {
+          if (value === null || value === undefined) return '—';
+          if (index === 4 || index === 5) return formatRate(value);
+          if (index === 8 || index === 9) return formatReduction(value);
+          return typeof value === 'number' ? formatCount(value) : String(value);
+        };
+        // Colonnes utiles à une diapositive : poste, action, taux choisi,
+        // pôles à 100 %, réduction à date / cible.
+        const rateIndex = state.reductionMode === 'termines' ? 4 : 5;
+        const columns = [2, 3, rateIndex, 6, 7, 8, 9];
+        const table = document.createElement('table');
+        const headRow = table.createTHead().insertRow();
+        columns.forEach((index) => { const th = document.createElement('th'); th.textContent = POSTE_EXPORT_HEADERS[index]; headRow.append(th); });
+        const body = table.createTBody();
+        posteExportRows(groups).forEach((row) => {
+          const tr = body.insertRow();
+          columns.forEach((index) => { tr.insertCell().textContent = formatValue(row[index], index); });
+        });
+        const holder = document.createElement('div');
+        holder.style.cssText = 'position:fixed;left:-10000px;top:0;';
+        holder.append(table);
+        document.body.append(holder);
+        const range = document.createRange();
+        range.selectNode(table);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(range);
+        let copied = false;
+        try { copied = document.execCommand('copy'); } catch (error) { copied = false; }
+        selection.removeAllRanges();
+        holder.remove();
+        const original = button.textContent;
+        button.textContent = copied ? 'Copié ✓' : 'Échec';
+        if (!copied) window.alert('Copie impossible dans ce navigateur : utiliser l\'export CSV.');
+        setTimeout(() => { button.textContent = original; }, 1500);
+      }
+
       function renderPoste() {
         if (!state.bootstrap) return;
         const options = {
@@ -3608,6 +3696,7 @@
         renderToolLinks(elements.posteToolLinks, options.filiere);
         renderTrajectoire(options);
         const groups = computePosteCards(state.bootstrap, options);
+        state.posteExport = {groups, scope: [options.filiere || 'Toutes les filières', options.filiere ? options.territoire : ''].filter(Boolean).join(' · ')};
         // Toutes actions du périmètre confondues (mêmes filtres que les
         // cartes) : somme par pôle, puis moyenne entre pôles.
         const total = aggregateReductionByPole(state.bootstrap.facts.filter((fact) =>
@@ -3640,15 +3729,25 @@
           section.className = 'poste-group';
           const heading = document.createElement('h3');
           heading.textContent = group.poste;
-          // Export d'une seule tuile (cf. exportElementAsPng).
-          const imageButton = document.createElement('button');
-          imageButton.type = 'button';
-          imageButton.className = 'image-export tile-image-export';
-          imageButton.textContent = '⤓';
-          imageButton.title = `Enregistrer la tuile « ${group.poste} » en image (PNG)`;
-          imageButton.setAttribute('aria-label', imageButton.title);
-          imageButton.addEventListener('click', () => exportElementAsPng(section, group.poste));
-          heading.append(imageButton);
+          // Exports d'une seule tuile : image (cf. exportElementAsPng),
+          // tableau CSV, tableau copié (à coller dans Slides, Docs, Sheets).
+          const tools = document.createElement('span');
+          tools.className = 'tile-tools image-export';
+          const tileButton = (label, title, onClick) => {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'tile-image-export';
+            button.textContent = label;
+            button.title = title;
+            button.setAttribute('aria-label', title);
+            button.addEventListener('click', () => onClick(button));
+            tools.append(button);
+            return button;
+          };
+          tileButton('⤓', `Enregistrer la tuile « ${group.poste} » en image (PNG)`, () => exportElementAsPng(section, group.poste));
+          tileButton('CSV', `Télécharger le tableau de la tuile « ${group.poste} » (CSV)`, () => downloadPosteCsv([group], group.poste));
+          tileButton('Copier', `Copier le tableau de la tuile « ${group.poste} » (à coller dans Google Slides, Docs ou Sheets)`, (button) => copyPosteTable([group], button));
+          heading.append(tools);
           const meta = document.createElement('p');
           meta.className = 'poste-group-meta';
           meta.textContent = [
@@ -3666,6 +3765,12 @@
         renderPoste();
       });
       elements.posteTerritoire.addEventListener('change', renderPoste);
+      elements.posteCsv.addEventListener('click', () => {
+        if (state.posteExport && state.posteExport.groups.length) downloadPosteCsv(state.posteExport.groups, `tuiles ${state.posteExport.scope}`);
+      });
+      elements.posteCopy.addEventListener('click', () => {
+        if (state.posteExport && state.posteExport.groups.length) copyPosteTable(state.posteExport.groups, elements.posteCopy);
+      });
       elements.posteReductionMode.addEventListener('change', () => {
         state.reductionMode = elements.posteReductionMode.value;
         renderPoste();

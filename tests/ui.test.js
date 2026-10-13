@@ -74,6 +74,37 @@ test('interface : territoires de chaque filière dans Synthèse, Détail par pô
     assert.ok(tilePng.size > 2000, `tuile : ${tilePng.size} octets`);
     assert.ok(await page.$$eval('.image-export[data-image-target]', (buttons) => buttons.every((b) => document.getElementById(b.dataset.imageTarget))));
 
+    // Tuiles selon l'indicateur : terminées / concernées par défaut, puis
+    // moyenne d'avancement ; même taux que les compteurs « À 100 % ».
+    assert.strictEqual(await page.$eval('#poste-reduction-mode', (select) => select.value), 'termines');
+    const tileHead = () => page.$eval('#poste-grid .poste-table th:nth-child(2)', (th) => th.textContent);
+    const tileRows = () => page.$$eval('#poste-grid .poste-group:first-child tbody tr', (rows) => rows.map((r) => [r.cells[1].textContent.trim(), r.cells[2].textContent.trim()]));
+    assert.match(await tileHead(), /Terminées \/ concernées/);
+    for (const [rate, counts] of await tileRows()) {
+      const [done, concerned] = counts.split('/').map((n) => Number(n.trim()));
+      assert.strictEqual(rate, `${(Math.round(done / concerned * 1000) / 10).toLocaleString('fr-FR')} %`, `${rate} vs ${counts}`);
+    }
+    await page.selectOption('#poste-reduction-mode', 'avancement');
+    assert.match(await tileHead(), /Avancement moyen/);
+    assert.deepStrictEqual((await tileRows()).map((r) => r[0]), ['54,5 %', '42,3 %']);
+    await page.selectOption('#poste-reduction-mode', 'termines');
+
+    // Tableau des tuiles : CSV (toutes les tuiles, une tuile) et copie.
+    const csvOf = async (click) => {
+      const [download] = await Promise.all([page.waitForEvent('download'), click()]);
+      return {name: download.suggestedFilename(), text: fs.readFileSync(await download.path(), 'utf8').replace(/^\ufeff/, '')};
+    };
+    const allCsv = await csvOf(() => page.click('#poste-csv'));
+    const lines = allCsv.text.split('\r\n');
+    assert.match(lines[0], /^"Périmètre","Indicateur","Poste d'émissions","Action","% Terminées \/ concernées"/);
+    assert.ok(lines.some((line) => /"Transport","Ecoconduite"/.test(line)), lines.join('\n'));
+    assert.ok(lines.some((line) => /"Total du poste"/.test(line)));
+    const tileCsv = await csvOf(() => page.click('#poste-grid .poste-group:first-child button:has-text("CSV")'));
+    assert.match(tileCsv.name, /^dashboard-rso-transport-\d{4}-\d{2}-\d{2}\.csv$/);
+    assert.ok(tileCsv.text.split('\r\n').length < lines.length);
+    await page.click('#poste-copy');
+    assert.strictEqual(await page.textContent('#poste-copy'), 'Copié ✓');
+
     // Bouton « Rafraîchir les archives » (vue Évolution).
     await page.click('#tab-evolution');
     await page.click('#refresh-archives');
