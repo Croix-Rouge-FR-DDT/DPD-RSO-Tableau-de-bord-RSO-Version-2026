@@ -13,11 +13,11 @@ const {NATIONAL_ID, ARCHIVES_ID, REFERENTS_ID, FILIERES, buildNational, buildArc
 let playwright = null;
 try { playwright = require('playwright'); } catch (error) { /* non installé */ }
 
-function pageWithBootstrap(bootstrap) {
+function pageWithBootstrap(bootstrap, delayMs = 0) {
   const html = fs.readFileSync(path.join(__dirname, '..', 'Index.html'), 'utf8');
-  const stub = `<script>window.google={script:{run:{_s:null,_f:null,withSuccessHandler(f){this._s=f;return this},withFailureHandler(f){this._f=f;return this},getDashboardBootstrap(){const f=this._s;const data=${JSON.stringify(bootstrap)};setTimeout(()=>f(data),0)},rafraichirArchivesDepuisDashboard(){const f=this._s;const history=${JSON.stringify(bootstrap.history)};setTimeout(()=>f({report:['Archives 09/26 : 3 valeurs (mois 2026-09)','2 lignes au total dans "HISTORIQUE TDB VA".'],history,warnings:[]}),0)}}}};</script>`;
+  const stub = `<script>window.google={script:{run:{_s:null,_f:null,withSuccessHandler(f){this._s=f;return this},withFailureHandler(f){this._f=f;return this},getDashboardBootstrap(){const f=this._s;const data=${JSON.stringify(bootstrap)};setTimeout(()=>f(data),${delayMs})},rafraichirArchivesDepuisDashboard(){const f=this._s;const history=${JSON.stringify(bootstrap.history)};setTimeout(()=>f({report:['Archives 09/26 : 3 valeurs (mois 2026-09)','2 lignes au total dans "HISTORIQUE TDB VA".'],history,warnings:[]}),0)}}}};</script>`;
   const file = path.join(os.tmpdir(), `dashboard-rso-test-${process.pid}.html`);
-  fs.writeFileSync(file, html.replace('<body class="viz-root">', `<body class="viz-root">${stub}`));
+  fs.writeFileSync(file, html.replace(/<body[^>]*>/, (tag) => `${tag}${stub}`));
   return file;
 }
 
@@ -57,6 +57,22 @@ test('interface : territoires de chaque filière dans Synthèse, Détail par pô
     assert.match(filieresRows[0][1], /100/);
     assert.match(filieresRows[0][3], /75 %.*3 \/ 4/);
     assert.strictEqual(filieresRows[1][3], '—');
+
+    // Export en image (PNG) : panneau d'un graphique et tuile d'un poste.
+    const pngOf = async (click) => {
+      const [download] = await Promise.all([page.waitForEvent('download'), click()]);
+      const buffer = fs.readFileSync(await download.path());
+      assert.strictEqual(buffer.slice(1, 4).toString(), 'PNG', download.suggestedFilename());
+      return {name: download.suggestedFilename(), width: buffer.readUInt32BE(16), size: buffer.length};
+    };
+    const chartPng = await pngOf(() => page.click('#chart-panel-referents .image-export'));
+    assert.match(chartPng.name, /^dashboard-rso-taux-de-couverture-par-filiere-\d{4}-\d{2}-\d{2}\.png$/);
+    const panelWidth = await page.$eval('#chart-panel-referents', (el) => Math.ceil(el.getBoundingClientRect().width));
+    assert.strictEqual(chartPng.width, panelWidth * 2, 'résolution double');
+    await page.click('#tab-poste');
+    const tilePng = await pngOf(() => page.click('#poste-grid .poste-group .tile-image-export'));
+    assert.ok(tilePng.size > 2000, `tuile : ${tilePng.size} octets`);
+    assert.ok(await page.$$eval('.image-export[data-image-target]', (buttons) => buttons.every((b) => document.getElementById(b.dataset.imageTarget))));
 
     // Bouton « Rafraîchir les archives » (vue Évolution).
     await page.click('#tab-evolution');
@@ -124,5 +140,23 @@ test('interface : territoires de chaque filière dans Synthèse, Détail par pô
   } finally {
     await browser.close();
     fs.unlinkSync(file);
+  }
+});
+
+test('interface : indicateur de chargement visible pendant la lecture des données', {skip: !playwright && 'playwright non installé'}, async () => {
+  const app = loadAppsScript({[NATIONAL_ID]: buildNational('normal'), [ARCHIVES_ID]: buildArchives(), [REFERENTS_ID]: buildReferents()});
+  const file = pageWithBootstrap(JSON.parse(JSON.stringify(app.getDashboardBootstrap())), 2500);
+  const browser = await playwright.chromium.launch(process.env.CHROMIUM_PATH ? {executablePath: process.env.CHROMIUM_PATH} : {});
+  try {
+    const page = await browser.newPage();
+    await page.goto(`file://${file}`);
+    assert.ok(await page.isVisible('#loading-panel'));
+    assert.ok(!(await page.isVisible('.tabs')), 'onglets masqués pendant le chargement');
+    await page.waitForFunction(() => /\(1 s\)/.test(document.getElementById('loading-title').textContent));
+    await page.waitForFunction(() => typeof state !== 'undefined' && state.bootstrap);
+    assert.ok(!(await page.isVisible('#loading-panel')));
+    assert.ok(await page.isVisible('.tabs'));
+  } finally {
+    await browser.close();
   }
 });

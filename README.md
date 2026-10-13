@@ -216,7 +216,26 @@ DOM ; il n'y a pas de colonne « Référent.e 3 » (elle sera lue si elle est
 ajoutée, intitulée « Référent.e 3 … ») ; FLEX : 24 pôles couverts sur 32,
 soit 75 %, identique à la dernière photographie (0,75).
 
-## Diagnostics
+## Export en image et indicateur de chargement (13/10/2026)
+
+- **Bouton « ⤓ Image (PNG) »** sur chaque graphique et carte (Synthèse :
+  graphique principal, comparaison, fiche d'identité ; Détail par poste :
+  trajectoire, panneau des tuiles et bouton « ⤓ » sur chaque tuile ;
+  Évolution : les deux graphiques et le détail par action ; Référents :
+  couverture, graphique, couverture par filière). L'image reprend le
+  panneau entier (titre, légende, graphique, note), sans les boutons, dans
+  le thème affiché (clair ou sombre), en résolution double. Fonction
+  `exportElementAsPng` (`Index.html`) : styles calculés recopiés, SVG
+  `foreignObject`, canvas. La police Poppins est intégrée à l'image quand
+  Google Fonts répond ; sinon police système (mise en page parfois un peu
+  différente). L'export SVG du graphique de la Synthèse est conservé.
+  Non couverts : les tableaux (Détail par pôle, Contrôle, listes), qui
+  ont leur export CSV.
+- **Chargement** : tant que les données ne sont pas arrivées, les onglets
+  sont masqués et un encadré « ⏳ Chargement des données en cours… (N s) »
+  s'affiche, avec un message complémentaire au-delà de 30 s. En cas
+  d'échec, l'encadré affiche le message d'erreur.
+
 
 À chaque chargement, le serveur contrôle les données et l'appli affiche
 un encadré « points à vérifier » en tête de page si besoin : colonne
