@@ -28,9 +28,16 @@ function getReferentsForDashboard_(poleReference) {
   if (listSheet) {
     const parsed = parseReferentsList_(listSheet.getDataRange().getValues());
     result.poles = parsed.poles;
-    const unknown = parsed.poles.filter((pole) => !poleReference[normalizeText_(pole.poleCode)]).map((pole) => pole.poleCode);
+    // Codes inconnus regroupés par filière (filière de la liste des
+    // référents), pour savoir où corriger.
+    const unknown = parsed.poles.filter((pole) => !poleReference[normalizeText_(pole.poleCode)]);
     if (unknown.length) {
-      addDiagnosticWarning_(`Référents : ${unknown.length} code(s) pôle absent(s) de BDD NOMS (comptés sans territoire), ex. ${unknown.slice(0, 3).join(', ')}.`);
+      const byFiliere = {};
+      unknown.forEach((pole) => { (byFiliere[pole.filiere] = byFiliere[pole.filiere] || []).push(pole.poleCode); });
+      const detail = Object.keys(byFiliere).sort()
+        .map((filiere) => `${filiere} : ${byFiliere[filiere].join(', ')}`)
+        .join(' ; ');
+      addDiagnosticWarning_(`Référents : ${unknown.length} code(s) pôle absent(s) de BDD NOMS (comptés sans territoire) — ${detail}.`);
     }
     if (parsed.withoutCode) {
       addDiagnosticWarning_(`Référents : ${parsed.withoutCode} ligne(s) sans code pôle ignorée(s) dans « ${config.REFERENTS_LIST_SHEET_NAME} ».`);
@@ -84,7 +91,7 @@ function parseReferentsEvolution_(values) {
   return series;
 }
 
-// {poles: [{poleCode, poleName, filiere, referents: [{name, email, fonction}], dateMaj}], withoutCode}
+// {poles: [{poleCode, poleName, filiere, directeur, referents: [{name, email, fonction}], dateMaj}], withoutCode}
 function parseReferentsList_(values) {
   const headerRow = values.findIndex((row) => row.some((cell) => normalizeText_(cell) === 'code pole'));
   if (headerRow === -1) {
@@ -96,7 +103,10 @@ function parseReferentsList_(values) {
     filiere: findColumnIndex_(table, 'filiere'),
     poleName: findColumnIndex_(table, 'nom pole'),
     poleCode: findColumnIndex_(table, 'code pole'),
-    dateMaj: findColumnIndex_(table, 'date maj')
+    dateMaj: findColumnIndex_(table, 'date maj'),
+    // « DT (directeur territorial) » : texte libre, parfois deux noms
+    // (« X / Y (appui) »), affiché tel quel.
+    directeur: findColumnIndex_(table, ['dt (directeur', 'directeur territorial', 'directrice territoriale'])
   };
   const referentCols = [1, 2, 3].map((rank) => ({
     name: findColumnIndex_(table, [`referent.e ${rank}`, `referent ${rank}`, `referente ${rank}`]),
@@ -120,6 +130,7 @@ function parseReferentsList_(values) {
       poleCode,
       poleName: cellAt_(row, col.poleName),
       filiere: mapReferentsFiliere_(filiere),
+      directeur: cellAt_(row, col.directeur),
       // Un·e référent·e est compté·e dès que son nom OU son adresse mail est
       // renseigné (constat du 08/10/2026 : pour PADOM, le nom est souvent
       // vide alors que l'adresse et « Référent.e Oui/Non » = OUI le sont).
