@@ -13,11 +13,11 @@ const {NATIONAL_ID, ARCHIVES_ID, REFERENTS_ID, FILIERES, buildNational, buildArc
 let playwright = null;
 try { playwright = require('playwright'); } catch (error) { /* non installé */ }
 
-function pageWithBootstrap(bootstrap) {
+function pageWithBootstrap(bootstrap, delayMs = 0) {
   const html = fs.readFileSync(path.join(__dirname, '..', 'Index.html'), 'utf8');
-  const stub = `<script>window.google={script:{run:{_s:null,_f:null,withSuccessHandler(f){this._s=f;return this},withFailureHandler(f){this._f=f;return this},getDashboardBootstrap(){const f=this._s;const data=${JSON.stringify(bootstrap)};setTimeout(()=>f(data),0)},rafraichirArchivesDepuisDashboard(){const f=this._s;const history=${JSON.stringify(bootstrap.history)};setTimeout(()=>f({report:['Archives 09/26 : 3 valeurs (mois 2026-09)','2 lignes au total dans "HISTORIQUE TDB VA".'],history,warnings:[]}),0)}}}};</script>`;
+  const stub = `<script>window.google={script:{run:{_s:null,_f:null,withSuccessHandler(f){this._s=f;return this},withFailureHandler(f){this._f=f;return this},getDashboardBootstrap(){const f=this._s;const data=${JSON.stringify(bootstrap)};setTimeout(()=>f(data),${delayMs})},rafraichirArchivesDepuisDashboard(){const f=this._s;const history=${JSON.stringify(bootstrap.history)};setTimeout(()=>f({report:['Archives 09/26 : 3 valeurs (mois 2026-09)','2 lignes au total dans "HISTORIQUE TDB VA".'],history,warnings:[]}),0)}}}};</script>`;
   const file = path.join(os.tmpdir(), `dashboard-rso-test-${process.pid}.html`);
-  fs.writeFileSync(file, html.replace('<body class="viz-root">', `<body class="viz-root">${stub}`));
+  fs.writeFileSync(file, html.replace(/<body[^>]*>/, (tag) => `${tag}${stub}`));
   return file;
 }
 
@@ -57,6 +57,53 @@ test('interface : territoires de chaque filière dans Synthèse, Détail par pô
     assert.match(filieresRows[0][1], /100/);
     assert.match(filieresRows[0][3], /75 %.*3 \/ 4/);
     assert.strictEqual(filieresRows[1][3], '—');
+
+    // Export en image (PNG) : panneau d'un graphique et tuile d'un poste.
+    const pngOf = async (click) => {
+      const [download] = await Promise.all([page.waitForEvent('download'), click()]);
+      const buffer = fs.readFileSync(await download.path());
+      assert.strictEqual(buffer.slice(1, 4).toString(), 'PNG', download.suggestedFilename());
+      return {name: download.suggestedFilename(), width: buffer.readUInt32BE(16), size: buffer.length};
+    };
+    const chartPng = await pngOf(() => page.click('#chart-panel-referents .image-export'));
+    assert.match(chartPng.name, /^dashboard-rso-taux-de-couverture-par-filiere-\d{4}-\d{2}-\d{2}\.png$/);
+    const panelWidth = await page.$eval('#chart-panel-referents', (el) => Math.ceil(el.getBoundingClientRect().width));
+    assert.strictEqual(chartPng.width, panelWidth * 2, 'résolution double');
+    await page.click('#tab-poste');
+    const tilePng = await pngOf(() => page.click('#poste-grid .poste-group .tile-image-export'));
+    assert.ok(tilePng.size > 2000, `tuile : ${tilePng.size} octets`);
+    assert.ok(await page.$$eval('.image-export[data-image-target]', (buttons) => buttons.every((b) => document.getElementById(b.dataset.imageTarget))));
+
+    // Tuiles selon l'indicateur : terminées / concernées par défaut, puis
+    // moyenne d'avancement ; même taux que les compteurs « À 100 % ».
+    assert.strictEqual(await page.$eval('#poste-reduction-mode', (select) => select.value), 'termines');
+    const tileHead = () => page.$eval('#poste-grid .poste-table th:nth-child(2)', (th) => th.textContent);
+    const tileRows = () => page.$$eval('#poste-grid .poste-group:first-child tbody tr', (rows) => rows.map((r) => [r.cells[1].textContent.trim(), r.cells[2].textContent.trim()]));
+    assert.match(await tileHead(), /Terminées \/ concernées/);
+    for (const [rate, counts] of await tileRows()) {
+      const [done, concerned] = counts.split('/').map((n) => Number(n.trim()));
+      assert.strictEqual(rate, `${(Math.round(done / concerned * 1000) / 10).toLocaleString('fr-FR')} %`, `${rate} vs ${counts}`);
+    }
+    await page.selectOption('#poste-reduction-mode', 'avancement');
+    assert.match(await tileHead(), /Avancement moyen/);
+    assert.deepStrictEqual((await tileRows()).map((r) => r[0]), ['54,5 %', '42,3 %']);
+    await page.selectOption('#poste-reduction-mode', 'termines');
+
+    // Tableau des tuiles : CSV (toutes les tuiles, une tuile) et copie.
+    const csvOf = async (click) => {
+      const [download] = await Promise.all([page.waitForEvent('download'), click()]);
+      return {name: download.suggestedFilename(), text: fs.readFileSync(await download.path(), 'utf8').replace(/^\ufeff/, '')};
+    };
+    const allCsv = await csvOf(() => page.click('#poste-csv'));
+    const lines = allCsv.text.split('\r\n');
+    assert.match(lines[0], /^"Périmètre","Indicateur","Poste d'émissions","Action","% Terminées \/ concernées"/);
+    assert.ok(lines.some((line) => /"Transport","Ecoconduite"/.test(line)), lines.join('\n'));
+    assert.ok(lines.some((line) => /"Total du poste"/.test(line)));
+    const tileCsv = await csvOf(() => page.click('#poste-grid .poste-group:first-child button:has-text("CSV")'));
+    assert.match(tileCsv.name, /^dashboard-rso-transport-\d{4}-\d{2}-\d{2}\.csv$/);
+    assert.ok(tileCsv.text.split('\r\n').length < lines.length);
+    await page.click('#poste-copy');
+    assert.strictEqual(await page.textContent('#poste-copy'), 'Copié ✓');
 
     // Bouton « Rafraîchir les archives » (vue Évolution).
     await page.click('#tab-evolution');
@@ -124,5 +171,23 @@ test('interface : territoires de chaque filière dans Synthèse, Détail par pô
   } finally {
     await browser.close();
     fs.unlinkSync(file);
+  }
+});
+
+test('interface : indicateur de chargement visible pendant la lecture des données', {skip: !playwright && 'playwright non installé'}, async () => {
+  const app = loadAppsScript({[NATIONAL_ID]: buildNational('normal'), [ARCHIVES_ID]: buildArchives(), [REFERENTS_ID]: buildReferents()});
+  const file = pageWithBootstrap(JSON.parse(JSON.stringify(app.getDashboardBootstrap())), 2500);
+  const browser = await playwright.chromium.launch(process.env.CHROMIUM_PATH ? {executablePath: process.env.CHROMIUM_PATH} : {});
+  try {
+    const page = await browser.newPage();
+    await page.goto(`file://${file}`);
+    assert.ok(await page.isVisible('#loading-panel'));
+    assert.ok(!(await page.isVisible('.tabs')), 'onglets masqués pendant le chargement');
+    await page.waitForFunction(() => /\(1 s\)/.test(document.getElementById('loading-title').textContent));
+    await page.waitForFunction(() => typeof state !== 'undefined' && state.bootstrap);
+    assert.ok(!(await page.isVisible('#loading-panel')));
+    assert.ok(await page.isVisible('.tabs'));
+  } finally {
+    await browser.close();
   }
 });

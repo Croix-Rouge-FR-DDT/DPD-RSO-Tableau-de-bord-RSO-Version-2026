@@ -216,7 +216,33 @@ DOM ; il n'y a pas de colonne « Référent.e 3 » (elle sera lue si elle est
 ajoutée, intitulée « Référent.e 3 … ») ; FLEX : 24 pôles couverts sur 32,
 soit 75 %, identique à la dernière photographie (0,75).
 
-## Diagnostics
+## Export en image et indicateur de chargement (13/10/2026)
+
+- **Bouton « ⤓ Image (PNG) »** sur chaque graphique et carte (Synthèse :
+  graphique principal, comparaison, fiche d'identité ; Détail par poste :
+  trajectoire, panneau des tuiles et bouton « ⤓ » sur chaque tuile ;
+  Évolution : les deux graphiques et le détail par action ; Référents :
+  couverture, graphique, couverture par filière). L'image reprend le
+  panneau entier (titre, légende, graphique, note), sans les boutons, dans
+  le thème affiché (clair ou sombre), en résolution double. Fonction
+  `exportElementAsPng` (`Index.html`) : styles calculés recopiés, SVG
+  `foreignObject`, canvas. La police Poppins est intégrée à l'image quand
+  Google Fonts répond ; sinon police système (mise en page parfois un peu
+  différente). L'export SVG du graphique de la Synthèse est conservé.
+  Non couverts : les tableaux (Détail par pôle, Contrôle, listes), qui
+  ont leur export CSV.
+- **Tableau des tuiles** (Détail par poste) : bouton « CSV » et « Copier »
+  sur chaque tuile, « Tableau des tuiles (CSV) » et « Copier le tableau »
+  pour toutes. CSV : une ligne par action et une ligne « Total du poste »
+  (périmètre, indicateur choisi, les deux taux, pôles ayant terminé /
+  concernés, réduction à date / cible, pôles comptés). « Copier » place un
+  tableau HTML dans le presse-papiers : collé dans Google Slides ou Docs,
+  il devient un tableau modifiable (non lié aux données).
+- **Chargement** : tant que les données ne sont pas arrivées, les onglets
+  sont masqués et un encadré « ⏳ Chargement des données en cours… (N s) »
+  s'affiche, avec un message complémentaire au-delà de 30 s. En cas
+  d'échec, l'encadré affiche le message d'erreur.
+
 
 À chaque chargement, le serveur contrôle les données et l'appli affiche
 un encadré « points à vérifier » en tête de page si besoin : colonne
@@ -399,11 +425,14 @@ ligne affiche :
   pour tout le périmètre : somme par pôle des réductions (points de % du
   bilan du pôle), puis **moyenne simple entre pôles**. Les pôles pilotes
   (au moins une valeur en kgCO2) sont exclus en entier et comptés à part.
-  Menu « Réduction à date » : **selon l'avancement déclaré** (valeur de
-  la colonne « Réduction carbone à date », par défaut) ou **pôles ayant
-  terminé seulement** (réduction cible si l'action est à 100 % pour le
+  Menu « Indicateur » : **pôles ayant terminé seulement** (par défaut
+  depuis le 13/10/2026 ; réduction cible si l'action est à 100 % pour le
   pôle, 0 sinon — même logique que Simon, qui utilise le taux de terminés
-  parmi les concernés ; repli sur la valeur à date quand la cible manque).
+  parmi les concernés ; repli sur la valeur à date quand la cible manque)
+  ou **selon l'avancement déclaré** (valeur de la colonne « Réduction
+  carbone à date »). Depuis le 13/10/2026, le menu change aussi le taux et
+  la jauge des tuiles (terminées / concernées, ou avancement moyen) et
+  l'ordre des actions dans chaque tuile.
   Les autres différences avec le calcul de Simon (potentiel national non
   adapté au pôle, repas végétariens au tiers, cas déchets / véhicules
   électriques) restent.
