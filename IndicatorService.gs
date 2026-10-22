@@ -114,20 +114,57 @@ function resolveFactTerritoire_(fact, poleReference) {
 // endroit, dans Index.html, plutôt que dupliquée en Apps Script ET en JS
 // navigateur — un projet sans mainteneur dédié ne doit pas avoir deux
 // versions de la même formule à garder synchronisées.
-function getDashboardBootstrap() {
+//
+// Cache (22/10/2026) : le résultat est gardé BOOTSTRAP_CACHE_SECONDS_ dans
+// le cache du script (cf. BootstrapCacheService.gs) ; les ouvertures
+// suivantes ne relisent plus les classeurs. options.forceRefresh (bouton
+// « Actualiser les données ») relit tout et remplace le cache.
+function getDashboardBootstrap(options) {
   // Même restriction de domaine que doGet (WebApp.gs) : cette fonction est
   // appelable depuis la page, elle ne doit rien renvoyer hors domaine.
   if (!isAllowedIdentityEmail_(getActiveUserEmail_())) {
     throw new Error('Accès réservé aux comptes @croix-rouge.fr.');
   }
+  return loadDashboardBootstrap_(Boolean(options && options.forceRefresh));
+}
+
+function loadDashboardBootstrap_(forceRefresh) {
   const config = getConfig_();
   DASHBOARD_DIAGNOSTICS_.warnings = [];
   DASHBOARD_DIAGNOSTICS_.details = {};
-  const poleReference = getPoleReference_();
-  const importFactRecords = getFactRecords_();
-  const factRecords = importFactRecords.concat(getProtEnfanceFacts_(poleReference, importFactRecords));
+  DASHBOARD_DIAGNOSTICS_.timings = [];
+  DASHBOARD_DIAGNOSTICS_.accessLinks = [];
+
+  // Droits sur les classeurs (déploiement « exécuté par l'utilisateur ») :
+  // sans accès au classeur national, rien ne peut s'afficher -> écran
+  // « demander l'accès » au lieu d'une erreur ; sans accès aux archives ou
+  // aux référents, le reste s'affiche et l'encadré propose le lien.
+  // Contrôle refait pour chaque personne, même quand les données viennent
+  // du cache (résultat gardé ACCESS_CACHE_SECONDS_ par personne).
+  const access = timed_('Vérification des accès', () => getUserSpreadsheetAccess_(forceRefresh));
+  const missing = access.filter((item) => !item.ok);
+  if (missing.some((item) => item.required)) {
+    return {appVersion: config.APP_VERSION, accessRequired: {email: getActiveUserEmail_(), missing: missing, contact: config.ACCESS_CONTACT || ''}};
+  }
+  if (!forceRefresh) {
+    const cached = timed_('Lecture du cache', () => readBootstrapCache_());
+    if (cached) return personalizeCachedBootstrap_(cached, missing);
+  }
+  missing.forEach((item) => DASHBOARD_DIAGNOSTICS_.accessLinks.push(item));
+
+  timed_('Lecture groupée du classeur national', () => prefetchDisplayValues_(config.SPREADSHEET_ID, [
+    {sheetName: config.IMPORT_SHEET_NAME, range: `${config.IMPORT_SYNTHESE_FIRST_COLUMN}${config.IMPORT_HEADER_ROW}:${config.IMPORT_SYNTHESE_LAST_COLUMN}`},
+    {sheetName: config.POLE_REFERENCE_SHEET_NAME, range: ''},
+    {sheetName: config.ACTIONS_REFERENCE_SHEET_NAME, range: ''},
+    {sheetName: config.BILAN_CARBONE_SHEET_NAME, range: ''}
+  ]));
+  const poleReference = timed_('BDD NOMS', () => getPoleReference_());
+  const importFactRecords = timed_('IMPORT DONNEES', () => getFactRecords_());
+  const protFacts = timed_('PROT ENFANCE', () => getProtEnfanceFacts_(poleReference, importFactRecords));
+  const factRecords = importFactRecords.concat(protFacts);
   const padomOverrides = derivePadomOverrides_(factRecords);
-  const actionCatalogue = getActionCatalogue_();
+  const actionCatalogue = timed_('Référentiel des actions', () => getActionCatalogue_());
+  const bilanCarbone = timed_('Bilan carbone', () => getBilanCarbone_());
 
   const facts = factRecords.map((fact) => ({
     poleCode: fact.poleCode,
@@ -145,6 +182,22 @@ function getDashboardBootstrap() {
     // choisie dans la vue Détail par poste.
     catalogueReduction: resolveFactCatalogueReduction_(fact, actionCatalogue)
   }));
+  // Cible calculée pour les lignes sans cible saisie (BilanCarboneService.gs).
+  const computedByFiliere = {};
+  facts.forEach((fact) => {
+    fact.cibleCalculee = computeCibleCalculee_(fact, bilanCarbone);
+    if (fact.cibleCalculee && hasMissingTarget_(fact) && !/kg/i.test(String(fact.reductionCible))) {
+      computedByFiliere[fact.filiere] = (computedByFiliere[fact.filiere] || 0) + 1;
+    }
+  });
+  if (bilanCarbone) {
+    setDiagnosticDetail_('bilanCarbone', {
+      sourcePoidsBilanCrf: bilanCarbone.nationalSource,
+      poidsBilanCrf: bilanCarbone.national,
+      filieres: Object.keys(bilanCarbone.filieres),
+      ciblesCalculeesParFiliere: computedByFiliere
+    });
+  }
 
   // Le pôle lui-même (envoyé au client pour construire l'univers des pôles
   // par filière/territoire) doit refléter le même reclassement PADOM -> PA/DOM
@@ -171,9 +224,10 @@ function getDashboardBootstrap() {
     addDiagnosticWarning_(`${missingCodes.length} code(s) pôle d'${config.IMPORT_SHEET_NAME} absent(s) de ${config.POLE_REFERENCE_SHEET_NAME} (sans territoire), ex. ${missingCodes.slice(0, 3).join(', ')}.`);
   }
 
-  const toolLinks = getToolLinks_();
-  const history = getHistoryForDashboard_();
-  return {
+  const toolLinks = timed_('Liens outils', () => getToolLinks_());
+  const history = timed_('Historique', () => getHistoryForDashboard_());
+  const referents = timed_('Référents', () => getReferentsForDashboard_(poleReference, toolLinks));
+  const bootstrap = {
     appVersion: config.APP_VERSION,
     generatedAt: new Date().toISOString(),
     // Faits envoyés en colonnes (une liste de champs + des lignes) plutôt
@@ -183,12 +237,16 @@ function getDashboardBootstrap() {
     poles: poles,
     toolLinks: toolLinks,
     history: history,
-    referents: getReferentsForDashboard_(poleReference),
+    referents: referents,
     diagnostics: DASHBOARD_DIAGNOSTICS_
   };
+  // Mis en cache seulement si la personne voit tous les classeurs : sinon
+  // l'historique ou les référents manqueraient pour les suivantes.
+  if (!missing.length) timed_('Écriture du cache', () => writeBootstrapCache_(bootstrap));
+  return bootstrap;
 }
 
-const FACT_FIELDS_ = ['poleCode', 'action', 'volet', 'thematique', 'avancement', 'filiere', 'territoire', 'actionSocle', 'reductionADate', 'reductionCible', 'catalogueReduction'];
+const FACT_FIELDS_ = ['poleCode', 'action', 'volet', 'thematique', 'avancement', 'filiere', 'territoire', 'actionSocle', 'reductionADate', 'reductionCible', 'catalogueReduction', 'cibleCalculee'];
 
 function toColumnar_(records, fields) {
   return {fields: fields, rows: records.map((record) => fields.map((field) => record[field]))};
@@ -198,8 +256,15 @@ function toColumnar_(records, fields) {
 // un affichage (ex. territoires absents) : affiche les avertissements et le
 // détail des colonnes réellement utilisées, sans passer par l'appli.
 function diagnosticDashboard() {
-  const bootstrap = getDashboardBootstrap();
+  const start = Date.now();
+  const bootstrap = getDashboardBootstrap({forceRefresh: true});
+  if (bootstrap.accessRequired) {
+    Logger.log(JSON.stringify({accesManquant: bootstrap.accessRequired}, null, 2));
+    return;
+  }
   Logger.log(JSON.stringify({
+    dureeTotaleMs: Date.now() - start,
+    dureesParEtapeMs: bootstrap.diagnostics.timings,
     avertissements: bootstrap.diagnostics.warnings,
     details: bootstrap.diagnostics.details,
     faits: bootstrap.facts.rows.length,
@@ -216,7 +281,7 @@ function diagnosticDashboard() {
 // dans le journal d'exécution (View > Logs) : compte des lignes et des
 // pôles plutôt que le détail complet, pour rester lisible.
 function testDashboardBootstrap() {
-  const bootstrap = getDashboardBootstrap();
+  const bootstrap = getDashboardBootstrap({forceRefresh: true});
   Logger.log(JSON.stringify({
     appVersion: bootstrap.appVersion,
     factCount: bootstrap.facts.rows.length,
@@ -258,3 +323,43 @@ function diagnosticReductionCarbone() {
     polesAvecKg: Object.keys(kgPoles).sort()
   }, null, 2));
 }
+
+// Classeurs lus par le dashboard : accès vérifié avec le compte qui
+// exécute l'application. required : indispensable à l'affichage.
+function spreadsheetSources_() {
+  const config = getConfig_();
+  const sources = [{key: 'national', label: 'REPORTING NATIONAL', id: config.SPREADSHEET_ID, required: true}];
+  if (config.ARCHIVES_SPREADSHEET_ID && config.ARCHIVES_SPREADSHEET_ID !== config.SPREADSHEET_ID) {
+    sources.push({key: 'archives', label: 'Archives REPORTING NATIONAL (vue Évolution)', id: config.ARCHIVES_SPREADSHEET_ID, required: false});
+  }
+  if (config.REFERENTS_SPREADSHEET_ID) {
+    sources.push({key: 'referents', label: 'Synthèse référents Environnement (vue Référents)', id: config.REFERENTS_SPREADSHEET_ID, required: false});
+  }
+  return sources;
+}
+
+// [{key, label, url, required, ok, error}]. Ouvrir le lien sans droits
+// affiche la page Google « Vous avez besoin d'une autorisation » avec le
+// bouton « Demander l'accès » (demande envoyée au propriétaire du fichier).
+// Test par l'API Sheets (identifiant du classeur seulement) quand le
+// service avancé est activé : plus léger que d'ouvrir le classeur
+// (3,5 s pour les trois classeurs mesurées le 22/10/2026).
+function checkSpreadsheetAccess_() {
+  const lightCheck = typeof Sheets !== 'undefined' && Sheets.Spreadsheets && typeof Sheets.Spreadsheets.get === 'function';
+  return spreadsheetSources_().map((source) => {
+    const item = {key: source.key, label: source.label, required: source.required,
+      url: `https://docs.google.com/spreadsheets/d/${source.id}/edit`, ok: true, error: ''};
+    try {
+      if (lightCheck) {
+        Sheets.Spreadsheets.get(source.id, {fields: 'spreadsheetId'});
+      } else {
+        openSpreadsheet_(source.id);
+      }
+    } catch (error) {
+      item.ok = false;
+      item.error = error.message;
+    }
+    return item;
+  });
+}
+

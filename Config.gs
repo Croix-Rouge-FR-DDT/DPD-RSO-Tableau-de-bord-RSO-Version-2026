@@ -22,6 +22,10 @@ const CONFIG = Object.freeze({
   // d'émissions de chaque action, les fichiers des pôles n'étant pas
   // toujours cohérents entre eux (cf. ActionReferenceService.gs).
   ACTIONS_REFERENCE_SHEET_NAME: 'BDD - Actions supplémentaires',
+  // Poids des postes d'émissions par filière / type d'établissement et dans
+  // le bilan CRF : cibles calculées des lignes sans cible
+  // (cf. BilanCarboneService.gs).
+  BILAN_CARBONE_SHEET_NAME: 'BDD - Bilan carbone',
   // Archives mensuelles du "Tableau de bord VA" (copies manuelles, un onglet
   // par mois : "Archives 11/25", "Archives 09.26"...) et onglet de sortie
   // au format long, écrit DANS LE CLASSEUR DES ARCHIVES (cf.
@@ -43,6 +47,10 @@ const CONFIG = Object.freeze({
   REFERENTS_SPREADSHEET_ID: '1dqBJ4ghIJ7vqlJLBW3-Ou5fnE6U0l7O7wwPXIsuhdIc',
   REFERENTS_EVOLUTION_SHEET_NAME: 'Evolution référents',
   REFERENTS_LIST_SHEET_NAME: 'IMPORT REFERENTS',
+  // Personne ou boîte à contacter pour obtenir l'accès aux classeurs,
+  // affichée sur l'écran « demander l'accès » (vide = seuls les liens
+  // « Demander l'accès » de Google sont proposés).
+  ACCESS_CONTACT: '',
   HEADER_ROW: 1,
   MAX_PREVIEW_ROWS: 50,
   // Cache applicatif des droits (mis en place lors de l'ajout de la couche droits).

@@ -49,6 +49,10 @@
            ordre fixe, jamais recyclé. */
         --cat-1: #2a78d6; --cat-2: #eb6834; --cat-3: #1baf7a; --cat-4: #eda100;
         --cat-5: #e87ba4; --cat-6: #008300; --cat-7: #4a3aa7; --cat-8: #e34948;
+        /* Années socle (tableau Détail des données de la Synthèse) : mêmes
+           teintes pastel que l'outil de suivi des pôles (2024 vert, 2025
+           bleu, 2026 rouge). */
+        --socle-2024: #d4efd4; --socle-2025: #d3e4f7; --socle-2026: #f7d4d4;
       }
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme="light"]) .viz-root {
@@ -67,6 +71,7 @@
           --traj-adate:     #5598e7;
           --cat-1: #3987e5; --cat-2: #d95926; --cat-3: #199e70; --cat-4: #c98500;
           --cat-5: #d55181; --cat-6: #008300; --cat-7: #9085e9; --cat-8: #e66767;
+          --socle-2024: #24402a; --socle-2025: #213651; --socle-2026: #4a2628;
         }
       }
       :root[data-theme="dark"] .viz-root {
@@ -85,6 +90,7 @@
         --traj-adate:     #5598e7;
         --cat-1: #3987e5; --cat-2: #d95926; --cat-3: #199e70; --cat-4: #c98500;
         --cat-5: #d55181; --cat-6: #008300; --cat-7: #9085e9; --cat-8: #e66767;
+        --socle-2024: #24402a; --socle-2025: #213651; --socle-2026: #4a2628;
       }
 
       * { box-sizing: border-box; }
@@ -133,6 +139,15 @@
       .theme-toggle {
         min-height: 34px;
       }
+
+      /* Bouton « Actualiser les données » : mis en avant (couleur pleine),
+         les données pouvant dater de 10 minutes (cache serveur). */
+      button.refresh-data {
+        background: var(--series-1);
+        border-color: var(--series-1);
+        color: #ffffff;
+      }
+      button.refresh-data:hover { filter: brightness(1.1); }
 
       .app-header-actions {
         display: flex;
@@ -399,6 +414,7 @@
       .coverage-bar span { display: block; height: 100%; background: var(--series-1); }
       tr.is-selected td { font-weight: 600; }
       #referents-table th, #referents-table td { text-align: left; }
+      #referents-table td.referents-code { font-size: 0.74rem; color: var(--text-secondary); min-width: 160px; max-width: 260px; overflow-wrap: anywhere; }
 
       .refresh-status { margin: 0 0 20px; font-size: 0.8rem; color: var(--text-secondary); }
       .refresh-status details { margin-top: 4px; }
@@ -464,7 +480,23 @@
         font-size: 0.95rem;
         font-weight: 600;
       }
+      .referents-side { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+      .referents-side > .panel { margin: 0; }
       .tile-tools { display: inline-flex; gap: 4px; flex: 0 0 auto; }
+      .action-badge {
+        display: inline-block;
+        margin-left: 4px;
+        padding: 0 6px;
+        border: 1px solid var(--cat-5);
+        border-radius: 999px;
+        color: var(--text-secondary);
+        font-size: 0.68rem;
+        font-weight: 600;
+        line-height: 1.5;
+        white-space: nowrap;
+        vertical-align: 1px;
+      }
+      table.poste-table tr.is-specific td:first-child { box-shadow: inset 3px 0 0 var(--cat-5); }
       .tile-image-export {
         min-height: auto;
         padding: 2px 8px;
@@ -501,6 +533,9 @@
         .loading-spinner { animation-duration: 3s; }
       }
       .loading-panel[hidden] { display: none; }
+      .loading-panel.access .loading-spinner { display: none; }
+      .access-links { margin: 8px 0 0; padding-left: 20px; font-size: 0.9rem; }
+      .access-links li { margin: 4px 0; }
       .loading-panel.error .loading-spinner { display: none; }
       .loading-panel.error strong { color: #b3261e; }
       body.is-loading .tabs,
@@ -745,6 +780,14 @@
       .clickable-row:hover,
       .clickable-row:focus-visible { background: var(--surface-2); }
 
+      /* Détail des données (Synthèse) : ligne teintée selon l'année socle
+         de l'action ; assombrie au survol quand elle est cliquable. */
+      #data-table tr.socle-2024 { background: var(--socle-2024); }
+      #data-table tr.socle-2025 { background: var(--socle-2025); }
+      #data-table tr.socle-2026 { background: var(--socle-2026); }
+      #data-table tr[class*="socle-"].clickable-row:hover,
+      #data-table tr[class*="socle-"].clickable-row:focus-visible { filter: brightness(0.94); }
+
       .is-unavailable td {
         color: var(--text-muted);
         font-style: italic;
@@ -819,6 +862,12 @@
         z-index: 3;
       }
 
+      /* Changement de territoire : en-têtes de deux teintes alternées et
+         filet vertical entre deux territoires. */
+      table.matrix thead th.terr-a { background: color-mix(in srgb, var(--series-1) 16%, var(--surface-1)); }
+      table.matrix thead th.terr-b { background: color-mix(in srgb, var(--cat-4) 22%, var(--surface-1)); }
+      table.matrix .terr-start { border-left: 2px solid var(--text-secondary); }
+
       table.matrix thead .matrix-territoire-header {
         top: 0;
       }
@@ -873,6 +922,7 @@
         <h1>Dashboard RSO — Avancement des actions</h1>
       </div>
       <div class="app-header-actions">
+        <button type="button" class="refresh-data" id="refresh-data" disabled title="Relit tous les classeurs Google Sheets. Sans ce bouton, les données affichées peuvent dater de 10 minutes au plus.">🔄 Actualiser les données</button>
         <button type="button" id="export-all-csv" title="Exporte en une fois les tableaux actuellement affichés dans Synthèse, Détail et Contrôle">Exporter tout (CSV)</button>
         <button type="button" class="theme-toggle" id="theme-toggle">🌙 Mode sombre</button>
       </div>
@@ -883,6 +933,7 @@
       <div class="loading-spinner" aria-hidden="true"></div>
       <div>
         <strong id="loading-title">⏳ Chargement des données en cours…</strong>
+        <ul class="access-links" id="loading-links" hidden></ul>
         <p id="loading-detail">Lecture des classeurs Google Sheets (actions, référentiels, archives, référents). Cela peut prendre plusieurs secondes : merci de ne pas fermer la page.</p>
       </div>
     </div>
@@ -993,6 +1044,11 @@
             <button type="button" id="export-csv">Exporter le tableau (CSV)</button>
           </div>
         </div>
+        <div class="legend">
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--socle-2024)"></span>Action socle 2024</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--socle-2025)"></span>Action socle 2025</span>
+          <span class="legend-item"><span class="legend-swatch" style="background:var(--socle-2026)"></span>Action socle 2026</span>
+        </div>
         <div style="overflow-x:auto">
           <table id="data-table">
             <caption id="data-table-caption">Les taux sont exprimés en %.</caption>
@@ -1067,7 +1123,7 @@
     </section>
 
     <section class="tab-panel" id="panel-referents" role="tabpanel" aria-labelledby="tab-referents" hidden>
-      <p class="view-intro">Couverture des pôles par un·e référent·e environnement, à partir du classeur « Synthèse référents Environnement » : évolution du taux de couverture par filière (photographies datées) et liste des référent·es par pôle.</p>
+      <p class="view-intro">Couverture des pôles par un·e référent·e environnement : évolution du taux de couverture par filière (photographies datées du classeur « Synthèse référents Environnement ») et liste des référent·es par pôle (onglet « IMPORT REFERENTS », un bloc par filière ; fichiers « Liens référents » seulement pour une filière absente de l'onglet).</p>
       <section class="panel">
         <div class="panel-header">
           <h2>Filtres</h2>
@@ -1087,13 +1143,33 @@
       </section>
 
       <div class="evolution-grid">
-        <section class="panel" id="referents-kpi-panel">
-          <div class="panel-header">
-            <h2 id="referents-kpi-title">Couverture</h2>
-            <button type="button" class="image-export" data-image-target="referents-kpi-panel">⤓ Image (PNG)</button>
-          </div>
-          <dl class="identity-stats" id="referents-kpis"></dl>
-        </section>
+        <!-- Colonne de gauche : couverture du périmètre puis couverture par
+             filière, à gauche du graphique (demande du 20/10/2026). -->
+        <div class="referents-side">
+          <section class="panel" id="referents-kpi-panel">
+            <div class="panel-header">
+              <h2 id="referents-kpi-title">Couverture</h2>
+              <button type="button" class="image-export" data-image-target="referents-kpi-panel">⤓ Image (PNG)</button>
+            </div>
+            <dl class="identity-stats" id="referents-kpis"></dl>
+          </section>
+
+          <section class="panel" id="referents-filieres-panel">
+            <div class="panel-header">
+              <h2>Couverture par filière — dernière valeur</h2>
+              <button type="button" class="image-export" data-image-target="referents-filieres-panel">⤓ Image (PNG)</button>
+            </div>
+            <div style="overflow-x:auto">
+              <table id="referents-filieres-table">
+                <thead>
+                  <tr><th scope="col">Filière</th><th scope="col">Dernière photographie</th><th scope="col">Date</th><th scope="col">Listes des référents</th></tr>
+                </thead>
+                <tbody id="referents-filieres-body"></tbody>
+              </table>
+            </div>
+            <p class="chart-note">Dernière photographie : dernière valeur de l'onglet « Evolution référents » pour la filière (filière entière, tous territoires). Listes : pôles ayant au moins un·e référent·e ÷ pôles de la filière dans la liste des référents (onglet « IMPORT REFERENTS »), recalculé à chaque chargement ; « — » si la filière n'y figure pas. Les deux peuvent différer si la photographie date d'avant la dernière mise à jour de la liste.</p>
+          </section>
+        </div>
 
         <section class="panel chart-panel" id="chart-panel-referents">
           <div class="panel-header">
@@ -1109,22 +1185,6 @@
         </section>
       </div>
 
-      <section class="panel" id="referents-filieres-panel">
-        <div class="panel-header">
-          <h2>Couverture par filière — dernière valeur</h2>
-          <button type="button" class="image-export" data-image-target="referents-filieres-panel">⤓ Image (PNG)</button>
-        </div>
-        <div style="overflow-x:auto">
-          <table id="referents-filieres-table">
-            <thead>
-              <tr><th scope="col">Filière</th><th scope="col">Dernière photographie</th><th scope="col">Date</th><th scope="col">Liste « IMPORT REFERENTS »</th></tr>
-            </thead>
-            <tbody id="referents-filieres-body"></tbody>
-          </table>
-        </div>
-        <p class="chart-note">Dernière photographie : dernière valeur de l'onglet « Evolution référents » pour la filière (filière entière, tous territoires). Liste : pôles ayant au moins un·e référent·e ÷ pôles de la filière dans l'onglet « IMPORT REFERENTS », recalculé à chaque chargement ; « — » si la filière n'y figure pas. Les deux peuvent différer si la photographie date d'avant la dernière mise à jour de la liste.</p>
-      </section>
-
       <section class="panel">
         <div class="panel-header">
           <h2 id="referents-list-title">Référent·es par pôle</h2>
@@ -1135,7 +1195,7 @@
             <tbody id="referents-table-body"></tbody>
           </table>
         </div>
-        <p class="chart-note">Cliquer sur un nom pour écrire au ou à la référent·e (ouvre la messagerie). Cliquer sur l'en-tête Pôle, Filière ou Territoire pour trier. Directeur·rice de territoire : colonne « DT (directeur territorial) » de l'onglet « IMPORT REFERENTS ».</p>
+        <p class="chart-note">Cliquer sur un nom pour écrire au ou à la référent·e (ouvre la messagerie). Cliquer sur l'en-tête Pôle, Code pôle, Filière ou Territoire pour trier. Code pôle : tel qu'écrit dans la liste des référents (survol : code de BDD NOMS rapproché quand il diffère). Directeur·rice de territoire : colonne « DT (directeur territorial) » de l'onglet « IMPORT REFERENTS ».</p>
         <p class="matrix-empty" id="referents-empty" hidden>Aucun pôle de la liste dans ce périmètre.</p>
       </section>
     </section>
@@ -1283,6 +1343,7 @@
         <div class="refresh-status" id="refresh-archives-status" role="status" hidden></div>
         <p class="filter-hint">Taux de terminés = pôles ayant terminé l'action ÷ pôles concernés, tel que calculé dans le Tableau de bord VA. Avant 11/2025, les archives ne donnent ce taux que pour l'ensemble (pas par filière).</p>
         <p class="filter-hint">Valeur inconnue = point absent, jamais 0. Sont considérés comme inconnus : une campagne avant son année (ex. socles 2026 en 11/2025) ; une filière sans aucun répondant ce mois-là ; un 0 terminé alors que toutes les structures de la filière sont comptées « concernées » sans que toutes aient répondu (valeurs par défaut, ex. Petite enfance en 09/2026 après le changement d'outil) ; les indicateurs DIP (flotte, véhicules électriques).</p>
+        <p class="doc-caveat" id="evolution-caveat">Les évolutions connaissent des baisses liées à l'augmentation du nombre de répondants ou à la division de pôles en plusieurs outils de suivi.</p>
         <p class="matrix-empty" id="evolution-empty" hidden>Aucun historique disponible : lancer importArchivesTableauDeBord() depuis l'éditeur Apps Script (cf. README).</p>
       </section>
 
@@ -1326,6 +1387,10 @@
 
     <section class="tab-panel" id="panel-doc" aria-labelledby="tab-controle" hidden>
       <section class="panel">
+        <div class="doc-section">
+          <h3>Durée du dernier chargement</h3>
+          <p id="load-timings">—</p>
+        </div>
         <div class="doc-section">
           <h3>Sources</h3>
           <p>Deux onglets du classeur REPORTING NATIONAL : <code>IMPORT DONNEES</code> (zone SYNTHESE, colonnes AM:AZ) pour la table de faits — un couple pôle × action par ligne — et <code>BDD NOMS</code> pour la dimension pôle (filière, territoire, régions). La jointure se fait sur le code pôle.</p>
@@ -1407,6 +1472,7 @@
 
       const elements = {
         status: document.getElementById('status'),
+        refreshData: document.getElementById('refresh-data'),
         diagnostics: document.getElementById('diagnostics'),
         exportAllCsv: document.getElementById('export-all-csv'),
         themeToggle: document.getElementById('theme-toggle'),
@@ -1431,6 +1497,8 @@
         loadingPanel: document.getElementById('loading-panel'),
         loadingTitle: document.getElementById('loading-title'),
         loadingDetail: document.getElementById('loading-detail'),
+        loadingLinks: document.getElementById('loading-links'),
+        loadTimings: document.getElementById('load-timings'),
         refreshArchives: document.getElementById('refresh-archives'),
         refreshArchivesStatus: document.getElementById('refresh-archives-status'),
         tabPoste: document.getElementById('tab-poste'),
@@ -1728,6 +1796,18 @@
         return denominator === 0 ? 0 : Math.round((numerator / denominator) * 1000) / 10;
       }
 
+      // Libellé affiché d'un territoire : lettre ou numéro suivi des régions
+      // de BDD NOMS (« Territoire A · HDF - IDF - GE »). Le nom court reste
+      // la clé des filtres et des regroupements.
+      function formatTerritoireLabel(territoireName, regions) {
+        return territoireName && regions ? `${territoireName} · ${regions}` : territoireName;
+      }
+
+      function territoireLabelIn(poles, filiereName, territoireName) {
+        const pole = poles.find((item) => item.filiere === filiereName && item.territoire === territoireName && item.regions);
+        return formatTerritoireLabel(territoireName, pole ? pole.regions : '');
+      }
+
       function poleUniverseCodes(poles, filiereName, territoireName) {
         return poles
           .filter((pole) => pole.filiere === filiereName && (!territoireName || pole.territoire === territoireName))
@@ -1795,7 +1875,10 @@
             const dataAvailable = bucket.total > 0;
 
             return {
-              label: name,
+              // key : valeur du filtre (navigation vers Détail par pôle) ;
+              // label : texte affiché (régions ajoutées pour un territoire).
+              key: name,
+              label: niveau === 'territoire' && scopeFiliere ? territoireLabelIn(bootstrap.poles, scopeFiliere, name) : name,
               dataAvailable: dataAvailable,
               note: dataAvailable ? '' : 'Donnée non disponible pour ce groupe dans ce périmètre (voir onglet Méthodologie).',
               total: bucket.total,
@@ -1911,6 +1994,10 @@
       // affichées plutôt que d'en choisir une arbitrairement.
       // Le tableau "Détail des données" de la vue synthèse n'appelle cette
       // fonction que lorsqu'une filière précise est choisie.
+      // Années socle qui ont une couleur (--socle-AAAA dans le style) : en
+      // ajouter une ici et dans le style pour les actions socles 2027.
+      const SOCLE_COLOR_YEARS = [2024, 2025, 2026];
+
       function computeActionDetail(bootstrap, options) {
         const filiere = options.filiere || '';
         const territoire = options.territoire || '';
@@ -1926,9 +2013,11 @@
         scopedFacts.forEach((fact) => {
           const key = fact.action || UNKNOWN_LABEL;
           if (!byAction.has(key)) {
-            byAction.set(key, {action: key, thematiques: new Set(), volets: new Set(), concernes: 0, terminees: 0});
+            byAction.set(key, {action: key, thematiques: new Set(), volets: new Set(), socleYears: new Set(), concernes: 0, terminees: 0});
           }
           const bucket = byAction.get(key);
+          const socleYear = actionSocleYear(fact);
+          if (socleYear) bucket.socleYears.add(socleYear);
           if (fact.thematique) bucket.thematiques.add(fact.thematique);
           if (fact.volet) bucket.volets.add(fact.volet);
           if (isConcerne(fact.avancement)) {
@@ -1941,6 +2030,8 @@
           action: bucket.action,
           thematique: joinDistinct(bucket.thematiques),
           volet: joinDistinct(bucket.volets),
+          // Année socle seulement si l'action n'en a qu'une dans le périmètre.
+          socleYear: bucket.socleYears.size === 1 ? [...bucket.socleYears][0] : null,
           concernes: bucket.concernes,
           terminees: bucket.terminees,
           tauxTerminees: roundRate(bucket.terminees, bucket.concernes)
@@ -1962,8 +2053,7 @@
       }
 
       function territoireDisplayLabel(filiereName, territoireName) {
-        const pole = state.bootstrap.poles.find((item) => item.filiere === filiereName && item.territoire === territoireName && item.regions);
-        return pole ? `${territoireName} · ${pole.regions}` : territoireName;
+        return territoireLabelIn(state.bootstrap.poles, filiereName, territoireName);
       }
 
       function populateFiliereSelect(select, includeGlobalOption) {
@@ -2128,7 +2218,7 @@
         const niveauLabel = NIVEAU_LABELS[options.niveau] || 'Filière';
         const scopeBits = [];
         if (options.filiere) scopeBits.push(options.filiere);
-        if (options.territoire) scopeBits.push(options.territoire);
+        if (options.territoire) scopeBits.push(territoireDisplayLabel(options.filiere, options.territoire));
         const scopeSuffix = scopeBits.length ? ` — ${scopeBits.join(' · ')}` : ' — toutes filières';
         elements.chartTitle.textContent = `${indicateur.label}, par ${niveauLabel.toLowerCase()}${scopeSuffix}`;
         elements.dataTableCaption.textContent = `${scopeBits.length ? scopeBits.join(' · ') : 'Toutes filières confondues'} — les taux sont exprimés en %.`;
@@ -2244,7 +2334,7 @@
 
       function renderIdentityCard(options) {
         const card = computeIdentityCard(state.bootstrap, options);
-        const scopeBits = [options.filiere, options.territoire].filter(Boolean);
+        const scopeBits = [options.filiere, options.territoire && territoireDisplayLabel(options.filiere, options.territoire)].filter(Boolean);
         elements.identityCardTitle.textContent = `Fiche d'identité — ${scopeBits.length ? scopeBits.join(' · ') : 'ensemble de la CRF'}`;
         elements.identityStats.replaceChildren();
         elements.identityStats.append(
@@ -2334,11 +2424,11 @@
           hit.addEventListener('blur', hideTooltip);
           if (clickable) {
             hit.style.cursor = 'pointer';
-            hit.addEventListener('click', () => navigateFromSyntheseToDetail(item.label));
+            hit.addEventListener('click', () => navigateFromSyntheseToDetail(item.key || item.label));
             hit.addEventListener('keydown', (event) => {
               if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
-                navigateFromSyntheseToDetail(item.label);
+                navigateFromSyntheseToDetail(item.key || item.label);
               }
             });
           }
@@ -2546,6 +2636,7 @@
         elements.tableBody.replaceChildren();
         sortActionRows(detail.rows).forEach((row) => {
           const tr = document.createElement('tr');
+          if (SOCLE_COLOR_YEARS.includes(row.socleYear)) tr.classList.add(`socle-${row.socleYear}`);
           // Le Détail par pôle exige une filière : lien seulement dans ce cas.
           if (detail.filiere) {
             const openDetail = () => navigateToPoleDetail(detail.filiere, detail.territoire);
@@ -3014,6 +3105,17 @@
           return;
         }
 
+        // Groupes de territoires (pôles déjà triés par territoire) : couleur
+        // d'en-tête alternée et filet vertical au changement de territoire,
+        // comme dans le reporting national (demande du 20/10/2026).
+        const territoireKey = (pole) => pole.territoire || 'Territoire non renseigné';
+        let groupIndex = -1;
+        const poleGroups = matrix.poles.map((pole, index) => {
+          const start = index === 0 || territoireKey(pole) !== territoireKey(matrix.poles[index - 1]);
+          if (start) groupIndex += 1;
+          return {start: start && index > 0, parity: groupIndex % 2 === 0 ? 'terr-a' : 'terr-b'};
+        });
+
         const showTerritoireRow = !matrix.territoire; // "tous les territoires" : sous-en-tête groupé
         elements.matrixTerritoireRow.replaceChildren();
         elements.matrixTerritoireRow.hidden = !showTerritoireRow;
@@ -3029,6 +3131,7 @@
             while (index + span < matrix.poles.length && (matrix.poles[index + span].territoire || 'Territoire non renseigné') === territoire) span += 1;
             const th = document.createElement('th');
             th.colSpan = span;
+            th.className = `matrix-territoire-group ${poleGroups[index].parity}${poleGroups[index].start ? ' terr-start' : ''}`;
             th.textContent = territoireDisplayLabel(matrix.filiere, territoire) || territoire;
             elements.matrixTerritoireRow.appendChild(th);
             index += span;
@@ -3058,10 +3161,11 @@
           th.appendChild(button);
           elements.matrixHeaderRow.appendChild(th);
         });
-        matrix.poles.forEach((pole) => {
+        matrix.poles.forEach((pole, poleIndex) => {
           const th = document.createElement('th');
           th.scope = 'col';
-          th.title = pole.poleCode;
+          th.className = `${poleGroups[poleIndex].parity}${poleGroups[poleIndex].start ? ' terr-start' : ''}`;
+          th.title = `${pole.poleCode} — ${territoireKey(pole)}`;
           const labelLine = document.createElement('div');
           labelLine.className = 'matrix-pole-label';
           labelLine.textContent = pole.label || pole.poleCode;
@@ -3090,9 +3194,10 @@
           thematiqueCell.className = 'matrix-meta';
           thematiqueCell.textContent = row.thematique;
           tr.appendChild(thematiqueCell);
-          row.cells.forEach((rawValue) => {
+          row.cells.forEach((rawValue, poleIndex) => {
             const style = matrixCellStyle(rawValue);
             const td = document.createElement('td');
+            if (poleGroups[poleIndex] && poleGroups[poleIndex].start) td.className = 'terr-start';
             td.textContent = style.text;
             td.style.background = style.background;
             td.style.color = style.color;
@@ -3152,8 +3257,9 @@
           const action = fact.action || UNKNOWN_LABEL;
           if (!byPoste.has(poste)) byPoste.set(poste, new Map());
           const actions = byPoste.get(poste);
-          if (!actions.has(action)) actions.set(action, {action, concernes: 0, terminees: 0, somme: 0, facts: []});
+          if (!actions.has(action)) actions.set(action, {action, concernes: 0, terminees: 0, somme: 0, facts: [], types: new Set()});
           const bucket = actions.get(action);
+          bucket.types.add(actionTypeOf(fact));
           if (isConcerne(fact.avancement)) {
             bucket.concernes += 1;
             bucket.somme += parseAvancementFraction(fact.avancement);
@@ -3185,6 +3291,9 @@
               // affiché comme donnée non disponible, jamais comme 0 %.
               tauxMoyenAvancement: bucket.concernes ? roundRate(bucket.somme, bucket.concernes) : null,
               tauxTerminees: bucket.concernes ? roundRate(bucket.terminees, bucket.concernes) : null,
+              // Action spécifique filière (cf. actionTypeOf) : repérée dans
+              // la tuile par une étiquette (demande du 20/10/2026).
+              specific: bucket.types.has('filiere'),
               co2: aggregateReductionByPole(bucket.facts)
             })),
           co2: aggregateReductionByPole([...byPoste.get(poste).values()].flatMap((bucket) => bucket.facts))
@@ -3228,6 +3337,7 @@
         const byPole = new Map();
         const excludedPilots = new Set();
         const recalculatedPilots = new Set();
+        let computedTargetCount = 0;
         facts.forEach((fact) => {
           const code = normalizePoleCode(fact.poleCode);
           let aDate = parseReduction(fact.reductionADate);
@@ -3237,15 +3347,27 @@
               excludedPilots.add(code);
               return;
             }
-            // Pôle pilote recalculé : réduction du catalogue (toujours
-            // comptée comme une baisse) × avancement du pôle, sans ajustement
-            // au profil d'émissions (non disponible pour ces pôles).
-            const catalogue = parseReduction(fact.catalogueReduction);
+            // Pôle pilote recalculé : cible ajustée au profil d'émissions
+            // moyen de sa filière (« BDD - Bilan carbone », cibleCalculee,
+            // décision du 20/10/2026), à défaut réduction du catalogue ;
+            // toujours comptée comme une baisse, × avancement du pôle.
+            const catalogue = parseReduction(fact.cibleCalculee) || parseReduction(fact.catalogueReduction);
             if (!catalogue || catalogue.unit !== 'pct') return;
             recalculatedPilots.add(code);
             const target = -Math.abs(catalogue.value);
             cible = {unit: 'pct', value: target};
             aDate = {unit: 'pct', value: target * parseAvancementFraction(fact.avancement)};
+          } else if ((!cible || (cible.unit === 'pct' && cible.value === 0)) && fact.cibleCalculee) {
+            // Ligne sans cible saisie, ou à 0 (ex. PROT ENFANCE, PET E) :
+            // cible calculée côté serveur avec « BDD - Bilan carbone »
+            // (BilanCarboneService.gs) ; à date = cible × avancement (la
+            // valeur à date saisie découlait de la cible absente).
+            const computed = parseReduction(fact.cibleCalculee);
+            if (computed) {
+              cible = computed;
+              aDate = {unit: 'pct', value: cible.value * parseAvancementFraction(fact.avancement)};
+              computedTargetCount += 1;
+            }
           }
           if (!aDate && !cible) return;
           if (!byPole.has(code)) byPole.set(code, {aDate: 0, cible: 0});
@@ -3262,7 +3384,7 @@
         });
         const poles = [...byPole.values()];
         const mean = (key) => poles.length ? poles.reduce((sum, pole) => sum + pole[key], 0) / poles.length : null;
-        return {aDate: mean('aDate'), cible: mean('cible'), poleCount: poles.length, excludedPilotCount: excludedPilots.size, recalculatedPilotCount: recalculatedPilots.size};
+        return {aDate: mean('aDate'), cible: mean('cible'), poleCount: poles.length, excludedPilotCount: excludedPilots.size, recalculatedPilotCount: recalculatedPilots.size, computedTargetCount};
       }
 
       function formatReduction(value) {
@@ -3346,6 +3468,16 @@
         const row = document.createElement('tr');
         const name = document.createElement('td');
         name.textContent = card.action;
+        if (card.specific) {
+          // Étiquette texte plutôt qu'une couleur seule : lisible sans
+          // légende, en impression, en image et par un lecteur d'écran.
+          row.classList.add('is-specific');
+          const badge = document.createElement('span');
+          badge.className = 'action-badge';
+          badge.textContent = 'Spécifique filière';
+          badge.title = 'Action spécifique à la filière (colonne « Action socles » : « Action filière » ou « Action spécifique filière »)';
+          name.append(' ', badge);
+        }
 
         const rate = document.createElement('td');
         const rateBox = document.createElement('div');
@@ -3627,15 +3759,16 @@
       // points de % du bilan carbone, moyenne par pôle (cf.
       // aggregateReductionByPole).
       const POSTE_EXPORT_HEADERS = ['Périmètre', 'Indicateur', 'Poste d\'émissions', 'Action', '% Terminées / concernées', '% Avancement moyen',
-        'Pôles ayant terminé', 'Pôles concernés', 'Réduction à date (pts de %)', 'Réduction cible (pts de %)', 'Pôles comptés (réduction)'];
+        'Pôles ayant terminé', 'Pôles concernés', 'Réduction à date (pts de %)', 'Réduction cible (pts de %)', 'Pôles comptés (réduction)', 'Type d\'action'];
 
       function posteExportRows(groups) {
         const scope = state.posteExport ? state.posteExport.scope : '';
         const indicator = elements.posteReductionMode.selectedOptions[0].textContent;
         const reduction = (co2, key) => (co2.poleCount && co2[key] !== null ? Math.round(co2[key] * 100) / 100 : null);
         return groups.flatMap((group) => group.cards.map((card) => [scope, indicator, group.poste, card.action, card.tauxTerminees, card.tauxMoyenAvancement,
-          card.terminees, card.concernes, reduction(card.co2, 'aDate'), reduction(card.co2, 'cible'), card.co2.poleCount])
-          .concat([[scope, indicator, group.poste, 'Total du poste', null, null, null, null, reduction(group.co2, 'aDate'), reduction(group.co2, 'cible'), group.co2.poleCount]]));
+          card.terminees, card.concernes, reduction(card.co2, 'aDate'), reduction(card.co2, 'cible'), card.co2.poleCount,
+          card.specific ? 'Spécifique filière' : 'Socle'])
+          .concat([[scope, indicator, group.poste, 'Total du poste', null, null, null, null, reduction(group.co2, 'aDate'), reduction(group.co2, 'cible'), group.co2.poleCount, '']]));
       }
 
       function downloadPosteCsv(groups, label) {
@@ -3665,7 +3798,10 @@
         const body = table.createTBody();
         posteExportRows(groups).forEach((row) => {
           const tr = body.insertRow();
-          columns.forEach((index) => { tr.insertCell().textContent = formatValue(row[index], index); });
+          columns.forEach((index) => {
+            const specific = index === 3 && row[11] === 'Spécifique filière';
+            tr.insertCell().textContent = formatValue(row[index], index) + (specific ? ' (spécifique filière)' : '');
+          });
         });
         const holder = document.createElement('div');
         holder.style.cssText = 'position:fixed;left:-10000px;top:0;';
@@ -3715,9 +3851,12 @@
           elements.posteCo2Summary.append('Réduction du bilan carbone : aucune valeur en % exploitable dans ce périmètre');
         }
         if (total.excludedPilotCount) {
-          elements.posteCo2Summary.append(`, ${formatCount(total.excludedPilotCount)} pôle(s) pilote(s) exclu(s) (valeurs en kgCO2).`);
+          elements.posteCo2Summary.append(`, ${formatCount(total.excludedPilotCount)} pôle(s) pilote(s) exclu(s) (valeurs en kgCO2)`);
         } else if (total.recalculatedPilotCount) {
-          elements.posteCo2Summary.append(`, dont ${formatCount(total.recalculatedPilotCount)} pôle(s) pilote(s) recalculé(s) avec le catalogue.`);
+          elements.posteCo2Summary.append(`, dont ${formatCount(total.recalculatedPilotCount)} pôle(s) pilote(s) recalculé(s) avec le catalogue`);
+        }
+        if (total.computedTargetCount) {
+          elements.posteCo2Summary.append(` ; ${formatCount(total.computedTargetCount)} ligne(s) sans cible saisie : cible calculée avec « BDD - Bilan carbone » (moyenne de la filière).`);
         } else {
           elements.posteCo2Summary.append('.');
         }
@@ -4255,8 +4394,11 @@
         if (state.referentPoles) return state.referentPoles;
         const byCode = new Map(state.bootstrap.poles.map((pole) => [normalizePoleCode(pole.poleCode), pole]));
         state.referentPoles = referentsData().poles.map((pole) => {
-          const reference = byCode.get(normalizePoleCode(pole.poleCode));
-          return Object.assign({directeur: ''}, pole, {territoire: reference ? reference.territoire : '', knownCode: Boolean(reference)});
+          // referenceCode : code BDD NOMS rapproché côté serveur (code sans
+          // suffixe « - n » ou mêmes numéros d'établissement).
+          const reference = byCode.get(normalizePoleCode(pole.referenceCode || pole.poleCode));
+          const territoire = reference ? reference.territoire : (pole.territoire || '');
+          return Object.assign({directeur: ''}, pole, {territoire, territoireLabel: formatTerritoireLabel(territoire, reference ? reference.regions : ''), knownCode: Boolean(reference)});
         });
         return state.referentPoles;
       }
@@ -4273,10 +4415,12 @@
 
       function refreshReferentsTerritoires() {
         const filiere = elements.referentsFiliere.value;
-        const territoires = distinctSorted(referentPoles().filter((pole) => pole.filiere === filiere).map((pole) => pole.territoire));
+        const polesOfFiliere = referentPoles().filter((pole) => pole.filiere === filiere);
+        const territoires = distinctSorted(polesOfFiliere.map((pole) => pole.territoire));
+        const labelOf = (name) => (polesOfFiliere.find((pole) => pole.territoire === name && pole.territoireLabel !== name) || {territoireLabel: name}).territoireLabel;
         const current = elements.referentsTerritoire.value;
         elements.referentsTerritoire.replaceChildren(new Option('Toute la filière', ''));
-        territoires.forEach((name) => elements.referentsTerritoire.append(new Option(name, name)));
+        territoires.forEach((name) => elements.referentsTerritoire.append(new Option(labelOf(name), name)));
         elements.referentsTerritoire.disabled = !filiere || territoires.length === 0;
         if ([...elements.referentsTerritoire.options].some((option) => option.value === current)) elements.referentsTerritoire.value = current;
       }
@@ -4286,6 +4430,7 @@
       // départagent toujours par nom du pôle.
       const REFERENTS_SORT_KEYS = {
         poleName: (pole) => pole.poleName || pole.poleCode,
+        poleCode: (pole) => pole.poleCode,
         filiere: (pole) => pole.filiere,
         territoire: (pole) => pole.territoire
       };
@@ -4389,8 +4534,16 @@
         renderToolLinks(elements.referentsToolLinks, filiere);
 
         const listFilieres = distinctSorted(referentPoles().map((pole) => pole.filiere));
+        // Sources de la liste : listes des filières (« Liens référents »)
+        // puis « IMPORT REFERENTS » pour les pôles qu'elles ne contiennent pas.
+        const sources = referentsData().sources || [];
+        const read = sources.filter((source) => source.ok && source.poles > 0)
+          .map((source) => `${source.title}${source.filiere ? ` (${source.filiere})` : ''} : ${formatCount(source.poles)} pôle(s)`);
+        const unread = sources.filter((source) => !source.ok).map((source) => `${source.title} (${source.filiere})`);
         elements.referentsCoverageHint.textContent = listFilieres.length
-          ? `Liste des référent·es disponible pour : ${listFilieres.join(', ')} (onglet « IMPORT REFERENTS »). Les autres filières n'apparaissent que dans le graphique d'évolution.`
+          ? `Liste des référent·es disponible pour : ${listFilieres.join(', ')}.`
+            + (read.length ? ` Sources : ${read.join(' ; ')}.` : '')
+            + (unread.length ? ` Non lues : ${unread.join(' ; ')} (voir les points à vérifier en tête de page).` : '')
           : 'Liste des référent·es indisponible (voir les points à vérifier en tête de page).';
 
         const poles = sortReferentPoles(referentPoles()
@@ -4419,6 +4572,7 @@
         const headRow = document.createElement('tr');
         const headers = [
           {key: 'poleName', label: 'Pôle'},
+          {key: 'poleCode', label: 'Code pôle'},
           {key: 'filiere', label: 'Filière'},
           {key: 'territoire', label: 'Territoire'},
           {label: 'Directeur·rice de territoire'},
@@ -4460,10 +4614,15 @@
             return td;
           };
           const name = cell(pole.poleName || pole.poleCode);
-          name.title = pole.poleCode;
-          const territoireCell = cell(pole.territoire || '—');
+          // Code tel qu'écrit dans la liste ; code BDD NOMS rapproché au survol
+          // quand il diffère (suffixe « - n », libellé de territoire).
+          const code = cell(pole.poleCode);
+          code.className = 'referents-code';
+          if (pole.referenceCode && pole.referenceCode !== pole.poleCode) code.title = `Rapproché de « ${pole.referenceCode} » (BDD NOMS)`;
+          if (!pole.knownCode) code.title = `Code absent de BDD NOMS (filière ${pole.filiere})`;
+          const territoireCell = cell(pole.territoireLabel || '—');
           if (!pole.knownCode) territoireCell.title = `Code pôle ${pole.poleCode} absent de BDD NOMS (filière ${pole.filiere})`;
-          row.append(name, cell(pole.filiere), territoireCell, cell(pole.directeur || '—'));
+          row.append(name, code, cell(pole.filiere), territoireCell, cell(pole.directeur || '—'));
           for (let index = 0; index < maxReferents; index += 1) {
             row.append(referentCell(pole.referents[index]));
           }
@@ -4564,10 +4723,53 @@
       // Avertissements de données renvoyés par le serveur (colonne
       // introuvable, territoires vides, historique inaccessible…) : affichés
       // en tête de page plutôt que de laisser croire à un bug d'affichage.
+      // Lien « Demander l'accès » : la page Google d'un fichier sans droits
+      // propose ce bouton (demande envoyée au propriétaire du fichier).
+      function accessLinkItem(item) {
+        const li = document.createElement('li');
+        const link = document.createElement('a');
+        link.href = item.url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.textContent = item.label;
+        li.append('Classeur « ', link, ' » : cliquer sur le lien puis sur « Demander l\'accès » dans la page Google.');
+        return li;
+      }
+
+      // Pas d'accès au classeur national (déploiement « exécuté par
+      // l'utilisateur ») : écran explicatif au lieu d'une erreur.
+      function renderAccessRequired(info) {
+        elements.loadingPanel.classList.add('access');
+        elements.loadingTitle.textContent = '🔒 Accès aux données nécessaire';
+        elements.loadingLinks.replaceChildren(...info.missing.map(accessLinkItem));
+        elements.loadingLinks.hidden = false;
+        elements.loadingDetail.textContent = `Le tableau de bord lit les classeurs Google Sheets avec votre compte (${info.email || 'compte inconnu'}), qui n'a pas encore accès au classeur ci-dessus.`
+          + (info.contact ? ` Pour toute question : ${info.contact}.` : '')
+          + ' Une fois l\'accès accordé, recharger cette page.';
+        elements.status.textContent = 'Accès aux données nécessaire.';
+      }
+
+      function renderLoadTimings(diagnostics) {
+        const timings = (diagnostics && diagnostics.timings) || [];
+        const total = timings.reduce((sum, [, ms]) => sum + ms, 0);
+        elements.loadTimings.textContent = timings.length
+          ? `Côté serveur : ${(total / 1000).toLocaleString('fr-FR', {maximumFractionDigits: 1})} s — ` + timings.map(([label, ms]) => `${label} ${(ms / 1000).toLocaleString('fr-FR', {maximumFractionDigits: 1})} s`).join(' · ')
+            + `. Total vu par le navigateur : ${((Date.now() - loadingStartedAt) / 1000).toLocaleString('fr-FR', {maximumFractionDigits: 1})} s.`
+          : '—';
+      }
+
       function renderDiagnostics(diagnostics) {
         const warnings = (diagnostics && diagnostics.warnings) || [];
+        const accessLinks = (diagnostics && diagnostics.accessLinks) || [];
         elements.diagnostics.replaceChildren();
-        elements.diagnostics.hidden = warnings.length === 0;
+        elements.diagnostics.hidden = warnings.length === 0 && accessLinks.length === 0;
+        if (accessLinks.length) {
+          const accessTitle = document.createElement('strong');
+          accessTitle.textContent = '🔒 Une partie des données n\'est pas accessible avec votre compte';
+          const accessList = document.createElement('ul');
+          accessList.append(...accessLinks.map(accessLinkItem));
+          elements.diagnostics.append(accessTitle, accessList);
+        }
         if (!warnings.length) return;
         const title = document.createElement('strong');
         title.textContent = `⚠ ${warnings.length} point(s) à vérifier dans les données`;
@@ -4584,7 +4786,7 @@
       // Démarrage — un seul aller-retour serveur ; tout le reste (filtres,
       // agrégations, matrice) se recalcule ensuite dans le navigateur.
       // ---------------------------------------------------------------
-      const loadingStartedAt = Date.now();
+      let loadingStartedAt = Date.now();
       const loadingTimer = setInterval(() => {
         const seconds = Math.round((Date.now() - loadingStartedAt) / 1000);
         elements.loadingTitle.textContent = `⏳ Chargement des données en cours… (${seconds} s)`;
@@ -4599,28 +4801,15 @@
 
       google.script.run
         .withSuccessHandler((bootstrap) => {
+          if (bootstrap.accessRequired) {
+            clearInterval(loadingTimer);
+            renderAccessRequired(bootstrap.accessRequired);
+            return;
+          }
           endLoading();
           elements.loadingPanel.hidden = true;
-          bootstrap.facts = expandFacts(bootstrap.facts);
-          state.bootstrap = bootstrap;
-          renderDiagnostics(bootstrap.diagnostics);
-          state.pilotPoleCodes = computePilotPoleCodes(bootstrap);
-          const generated = new Date(bootstrap.generatedAt);
-          elements.status.textContent =
-            `Actualisé à ${generated.toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})} · v${bootstrap.appVersion} · ${bootstrap.facts.length.toLocaleString('fr-FR')} lignes chargées`;
-          populateFiliereSelect(elements.syntheseFiliere, true);
-          populateFiliereSelect(elements.detailFiliere, false);
-          populateFiliereSelect(elements.controlFiliere, true);
-          populateFiliereSelect(elements.posteFiliere, true);
-          updateNiveauAvailability();
-          renderSynthese();
-          renderMatrix();
-          renderControl();
-          renderPoste();
-          populateEvolutionFilters();
-          renderEvolution();
-          populateReferentsFilters();
-          renderReferents();
+          elements.refreshData.disabled = false;
+          applyBootstrap(bootstrap);
         })
         .withFailureHandler((error) => {
           clearInterval(loadingTimer);
@@ -4632,6 +4821,65 @@
           elements.loadingDetail.textContent = `${message} Recharger la page ; si l'erreur persiste, transmettre ce message à l'équipe RSO.`;
         })
         .getDashboardBootstrap();
+
+      // Données reçues (premier chargement ou « Actualiser les données ») :
+      // affichage de toutes les vues ; les filtres choisis sont conservés
+      // quand leur valeur existe encore.
+      function applyBootstrap(bootstrap) {
+      renderLoadTimings(bootstrap.diagnostics);
+      bootstrap.facts = expandFacts(bootstrap.facts);
+      state.bootstrap = bootstrap;
+      renderDiagnostics(bootstrap.diagnostics);
+      state.pilotPoleCodes = computePilotPoleCodes(bootstrap);
+      const generated = new Date(bootstrap.generatedAt);
+      elements.status.classList.remove('error');
+      elements.status.textContent =
+        `Données lues à ${generated.toLocaleTimeString('fr-FR', {hour: '2-digit', minute: '2-digit'})}${bootstrap.fromCache ? ' (gardées 10 min ; « 🔄 Actualiser les données » pour les relire)' : ''} · v${bootstrap.appVersion} · ${bootstrap.facts.length.toLocaleString('fr-FR')} lignes chargées`;
+      populateFiliereSelect(elements.syntheseFiliere, true);
+      populateFiliereSelect(elements.detailFiliere, false);
+      populateFiliereSelect(elements.controlFiliere, true);
+      populateFiliereSelect(elements.posteFiliere, true);
+      updateNiveauAvailability();
+      renderSynthese();
+      renderMatrix();
+      renderControl();
+      renderPoste();
+      populateEvolutionFilters();
+      renderEvolution();
+      populateReferentsFilters();
+      renderReferents();
+      }
+
+      // « Actualiser les données » : relecture complète des classeurs
+      // (cache serveur ignoré et remplacé), sans recharger la page.
+      elements.refreshData.addEventListener('click', () => {
+        const label = elements.refreshData.textContent;
+        const done = () => {
+          elements.refreshData.disabled = false;
+          elements.refreshData.textContent = label;
+        };
+        elements.refreshData.disabled = true;
+        elements.refreshData.textContent = '⏳ Actualisation en cours…';
+        loadingStartedAt = Date.now();
+        google.script.run
+          .withSuccessHandler((bootstrap) => {
+            done();
+            if (bootstrap.accessRequired) {
+              elements.status.textContent = 'Accès aux données nécessaire : recharger la page.';
+              elements.status.classList.add('error');
+              return;
+            }
+            // Calculs gardés en mémoire à partir des anciennes données.
+            Object.assign(state, {historyRowsClean: null, evolutionThematiques: null, referentPoles: null, controlRows: null});
+            applyBootstrap(bootstrap);
+          })
+          .withFailureHandler((error) => {
+            done();
+            elements.status.textContent = `Actualisation impossible : ${error && error.message ? error.message : 'erreur inconnue'}. Les données affichées sont celles d'avant.`;
+            elements.status.classList.add('error');
+          })
+          .getDashboardBootstrap({forceRefresh: true});
+      });
     </script>
   </body>
 </html>
